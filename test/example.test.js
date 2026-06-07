@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 
-const { createExample, stopExample } = require('../lib/commands');
+const { createExample, createPortInUseChecker, stopExample } = require('../lib/commands');
 
 function makeTempProject() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-example-'));
@@ -239,4 +239,21 @@ test('pn example --stop fails when the example project is missing', () => {
       }),
     /No example proxy project found/
   );
+});
+
+test('port checker uses listener inspection before bind fallback', () => {
+  const calls = [];
+  const execFileSync = (command, args) => {
+    calls.push([command, ...args]);
+    if (command === 'sh') {
+      return '';
+    }
+    throw new Error('unexpected fallback');
+  };
+
+  const isPortInUse = createPortInUseChecker(execFileSync);
+
+  assert.equal(isPortInUse(80), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], 'sh');
 });
