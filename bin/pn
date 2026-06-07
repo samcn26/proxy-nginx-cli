@@ -1,0 +1,15 @@
+#!/bin/sh
+
+script="$0"
+
+while [ -h "$script" ]; do
+  basedir=$(CDPATH= cd -- "$(dirname -- "$script")" && pwd)
+  link=$(readlink "$script")
+  case "$link" in
+    /*) script="$link" ;;
+    *) script="$basedir/$link" ;;
+  esac
+done
+
+basedir=$(CDPATH= cd -- "$(dirname -- "$script")" && pwd)
+exec node "$basedir/../lib/cli.js" "$@"
