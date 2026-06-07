@@ -13,7 +13,8 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
   - `lib/commands.js`: command implementations and project templates
   - `test/*.test.js`: Node test runner tests
   - `README.md`: user-facing docs
-- Branch currently used for development: `dev`
+- Main branch for tested CLI work: `master`
+- Development branch may still be used for incremental work: `dev`
 - Git remote: `git@github.com:samcn26/proxy-nginx-cli.git`
 
 ## Working Style
@@ -81,6 +82,6 @@ Expected current test count: 39 passing tests.
 ## Server Notes
 
 - SSH alias used for validation: `jestar`
-- Server working directory: `/home/jestar/devops/proxy-nginx-cli`
-- Validated remote tests after commit `16885c0`.
+- Server working directory used during validation: `/home/jestar/devops/proxy-nginx-cli`
+- Validated remote tests after commit `9be2ced`.
 - The real domain used during manual validation must stay out of public committed files.
