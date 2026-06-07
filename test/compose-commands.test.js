@@ -103,6 +103,32 @@ test('pn cert issues a certificate and reloads nginx', () => {
   ]);
 });
 
+test('pn cert backs up self-signed live certs before requesting a certificate', () => {
+  const cwd = makeComposeProject();
+  const liveDir = path.join(cwd, 'ssl', 'certs', 'live', 'test.example.cn');
+  fs.mkdirSync(liveDir, { recursive: true });
+  fs.writeFileSync(path.join(liveDir, 'fullchain.pem'), 'self signed');
+
+  const runner = () => ({ status: 0 });
+
+  certProject('test.example.cn', cwd, runner, () => '20260607153000');
+
+  assert.equal(fs.existsSync(liveDir), false);
+  assert.equal(
+    fs.existsSync(
+      path.join(
+        cwd,
+        'ssl',
+        'certs',
+        'live',
+        'test.example.cn.bak.selfsigned.20260607153000',
+        'fullchain.pem'
+      )
+    ),
+    true
+  );
+});
+
 test('compose runner uses docker-compose', () => {
   const attempts = [];
   const execFileSync = (command, args) => {
