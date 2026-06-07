@@ -37,6 +37,7 @@ test('pn example creates a runnable local example project', () => {
     'utf8'
   );
   assert.match(backend, /6666/);
+  assert.match(backend, /0\.0\.0\.0/);
   assert.match(backend, /proxy-nginx-cli example backend/);
 });
 
