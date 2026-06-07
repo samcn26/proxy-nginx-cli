@@ -109,7 +109,7 @@ test('pn example --run starts backend and proxy when ports are free', () => {
     },
     {
       type: 'compose',
-      args: ['up', '-d', '--build', 'proxy-nginx'],
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
       cwd: path.join(cwd, 'example', 'proxy'),
     },
   ]);
@@ -144,7 +144,7 @@ test('pn example <domain> --run --cert starts, issues cert, and reloads', () => 
     },
     {
       type: 'compose',
-      args: ['up', '-d', '--build', 'proxy-nginx'],
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
       cwd: path.join(cwd, 'example', 'proxy'),
     },
     {
@@ -177,6 +177,11 @@ test('pn example <domain> --run --cert starts, issues cert, and reloads', () => 
     {
       type: 'compose',
       args: ['exec', 'proxy-nginx', 'nginx', '-s', 'reload'],
+      cwd: path.join(cwd, 'example', 'proxy'),
+    },
+    {
+      type: 'compose',
+      args: ['up', '-d', 'certbot'],
       cwd: path.join(cwd, 'example', 'proxy'),
     },
   ]);

@@ -105,6 +105,25 @@ test('pn add creates an http-only site from a target url when ssl is disabled', 
   assert.doesNotMatch(config, /ssl_certificate/);
 });
 
+test('pn add accepts host port targets and maps loopback to host.docker.internal', () => {
+  const cwd = makeTempProject();
+  runCli(cwd, ['init']);
+
+  runCli(cwd, [
+    'add',
+    'local.test',
+    '127.0.0.1:3000',
+    '--no-ssl',
+  ]);
+
+  const config = fs.readFileSync(
+    path.join(cwd, 'nginx', 'templates', 'local.test.conf.template'),
+    'utf8'
+  );
+
+  assert.match(config, /server host\.docker\.internal:3000;/);
+});
+
 test('pn reset removes added site templates and keeps the base project skeleton', () => {
   const cwd = makeTempProject();
   runCli(cwd, ['init']);

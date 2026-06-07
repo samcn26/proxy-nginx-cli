@@ -18,6 +18,8 @@ pn init
 pn reset
 pn add <domain> -H <host> -p <port>
 pn add <domain> <target-url>
+pn add <domain> <host:port> --run
+pn add <domain> <host:port> --run --cert
 pn remove <domain>
 pn up
 pn reload
@@ -43,10 +45,30 @@ Equivalent URL form:
 pn add app.example.com http://host.docker.internal:6666
 ```
 
+Host-port shorthand:
+
+```bash
+pn add app.example.com 127.0.0.1:3000 --run
+```
+
+`127.0.0.1` and `localhost` targets are automatically mapped to `host.docker.internal` because the proxy runs inside Docker and needs to reach services on the host.
+
 By default, `pn add` generates HTTP and HTTPS Nginx config. Use `--no-ssl` for HTTP-only proxying:
 
 ```bash
 pn add local.example.test http://host.docker.internal:6666 --no-ssl
+```
+
+Apply immediately:
+
+```bash
+pn add app.example.com 127.0.0.1:3000 --run
+```
+
+Apply, request HTTPS, reload Nginx, and start the certificate renewal service:
+
+```bash
+pn add app.example.com 127.0.0.1:3000 --run --cert
 ```
 
 ## Local Example
@@ -109,6 +131,8 @@ Request a certificate and reload Nginx:
 pn cert app.example.com
 pn reload
 ```
+
+`pn cert` also starts the `certbot` renewal service after a successful issuance.
 
 Or run the online example and request the certificate in one command:
 
