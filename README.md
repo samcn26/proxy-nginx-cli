@@ -21,6 +21,9 @@ pn add <domain> <target-url>
 pn add <domain> <host:port> --run
 pn add <domain> <host:port> --run --cert
 pn remove <domain>
+pn network add <network>
+pn network add <network> --run
+pn network remove <network> --run
 pn up
 pn reload
 pn cert <domain>
@@ -70,6 +73,29 @@ Apply, request HTTPS, reload Nginx, and start the certificate renewal service:
 ```bash
 pn add app.example.com 127.0.0.1:3000 --run --cert
 ```
+
+## Docker Networks
+
+Attach the proxy container to one or more existing external Docker networks:
+
+```bash
+pn network add jestar
+pn network add internal-api
+```
+
+This updates `docker-compose.yml` only. Apply the change immediately by recreating `proxy-nginx`:
+
+```bash
+pn network add jestar --run
+```
+
+Remove a network attachment:
+
+```bash
+pn network remove jestar --run
+```
+
+Network commands do not create or delete Docker networks; create the external network with Docker first if it does not already exist.
 
 ## Local Example
 

@@ -8,6 +8,8 @@ const {
   addSite,
   certProject,
   createComposeRunner,
+  networkAdd,
+  networkRemove,
   reloadProject,
   upProject,
 } = require('../lib/commands');
@@ -15,6 +17,33 @@ const {
 function makeComposeProject() {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-compose-'));
   fs.writeFileSync(path.join(cwd, 'docker-compose.yml'), 'services: {}\n');
+  return cwd;
+}
+
+function makeProxyProject() {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-network-'));
+  fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, 'docker-compose.yml'),
+    `services:
+  proxy-nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxy-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  certbot:
+    image: certbot/certbot:latest
+`
+  );
   return cwd;
 }
 
@@ -171,6 +200,73 @@ test('pn add --run --cert applies the site and issues a certificate', () => {
     ['exec', 'proxy-nginx', 'nginx', '-t'],
     ['exec', 'proxy-nginx', 'nginx', '-s', 'reload'],
     ['up', '-d', 'certbot'],
+  ]);
+});
+
+test('pn network add attaches proxy nginx to multiple external networks', () => {
+  const cwd = makeProxyProject();
+
+  assert.equal(networkAdd('frontend', { cwd }), 'Added network frontend.');
+  assert.equal(networkAdd('backend', { cwd }), 'Added network backend.');
+  assert.equal(networkAdd('frontend', { cwd }), 'Network frontend already exists.');
+
+  const compose = fs.readFileSync(path.join(cwd, 'docker-compose.yml'), 'utf8');
+  assert.match(compose, /proxy-nginx:[\s\S]*networks:\n      - default\n      - frontend\n      - backend/);
+  assert.match(compose, /networks:\n  frontend:\n    external: true\n  backend:\n    external: true\n$/);
+});
+
+test('pn network add --run applies network changes immediately', () => {
+  const cwd = makeProxyProject();
+  const calls = [];
+
+  const output = networkAdd('frontend', {
+    cwd,
+    run: true,
+    runCompose: (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+    },
+  });
+
+  assert.match(output, /Started proxy nginx/);
+  assert.deepEqual(calls, [
+    {
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+      cwd,
+    },
+  ]);
+});
+
+test('pn network remove detaches a proxy network', () => {
+  const cwd = makeProxyProject();
+  networkAdd('frontend', { cwd });
+  networkAdd('backend', { cwd });
+
+  assert.equal(networkRemove('frontend', { cwd }), 'Removed network frontend.');
+
+  const compose = fs.readFileSync(path.join(cwd, 'docker-compose.yml'), 'utf8');
+  assert.doesNotMatch(compose, /frontend/);
+  assert.match(compose, /backend:\n    external: true/);
+});
+
+test('pn network remove --run applies network removal immediately', () => {
+  const cwd = makeProxyProject();
+  const calls = [];
+  networkAdd('frontend', { cwd });
+
+  const output = networkRemove('frontend', {
+    cwd,
+    run: true,
+    runCompose: (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+    },
+  });
+
+  assert.match(output, /Started proxy nginx/);
+  assert.deepEqual(calls, [
+    {
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+      cwd,
+    },
   ]);
 });
 
