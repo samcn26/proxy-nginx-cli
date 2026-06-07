@@ -20,11 +20,17 @@ pn add <domain> -H <host> -p <port>
 pn add <domain> <target-url>
 pn add <domain> <host:port> --run
 pn add <domain> <host:port> --run --cert
+pn add <domain> <host:port> --force
 pn remove <domain>
 pn network add <network>
 pn network add <network> --run
 pn network remove <network> --run
 pn up
+pn stop
+pn down
+pn restart
+pn status
+pn upgrade
 pn reload
 pn cert <domain>
 pn example
@@ -73,6 +79,39 @@ Apply, request HTTPS, reload Nginx, and start the certificate renewal service:
 ```bash
 pn add app.example.com 127.0.0.1:3000 --run --cert
 ```
+
+Existing site templates are preserved by default, so custom edits are not overwritten:
+
+```bash
+pn add app.example.com 127.0.0.1:3000
+```
+
+Overwrite a site template explicitly:
+
+```bash
+pn add app.example.com 127.0.0.1:3000 --force
+```
+
+## Operate Proxy
+
+```bash
+pn status
+pn stop
+pn down
+pn restart
+pn reload
+pn upgrade
+```
+
+`pn stop` maps to `docker compose stop`: containers are stopped but kept.
+
+`pn down` maps to `docker compose down`: containers and the compose default network are removed, while project files, templates, logs, and certificates stay on disk.
+
+`pn reload` validates and reloads the running Nginx process without restarting the container. Use it after certificate changes or when generated Nginx config is already current.
+
+`pn restart` recreates `proxy-nginx`, which reruns the Nginx image entrypoint and regenerates config from `nginx/templates/*.template`. Use it after editing templates.
+
+`pn upgrade` upgrades the `proxy-nginx-cli` command itself. Git-linked installs run `git pull --ff-only` and `npm install`; npm installs run `npm install -g proxy-nginx-cli@latest`.
 
 ## Docker Networks
 
