@@ -8,10 +8,15 @@ const {
   addSite,
   certProject,
   createComposeRunner,
+  downProject,
   networkAdd,
   networkRemove,
   reloadProject,
+  restartProject,
+  statusProject,
+  stopProject,
   upProject,
+  upgradeCli,
 } = require('../lib/commands');
 
 function makeComposeProject() {
@@ -64,6 +69,71 @@ test('pn up starts proxy nginx with docker compose', () => {
       cwd,
     },
   ]);
+});
+
+test('pn stop stops proxy project containers without deleting them', () => {
+  const cwd = makeComposeProject();
+  const calls = [];
+
+  const output = stopProject(cwd, (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+  });
+
+  assert.equal(output, 'Stopped proxy nginx project.');
+  assert.deepEqual(calls, [{ args: ['stop'], cwd }]);
+});
+
+test('pn down removes proxy project containers', () => {
+  const cwd = makeComposeProject();
+  const calls = [];
+
+  const output = downProject(cwd, (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+  });
+
+  assert.equal(output, 'Stopped and removed proxy nginx project containers.');
+  assert.deepEqual(calls, [{ args: ['down'], cwd }]);
+});
+
+test('pn restart recreates proxy nginx so templates are regenerated', () => {
+  const cwd = makeComposeProject();
+  const calls = [];
+
+  const output = restartProject(cwd, (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+  });
+
+  assert.equal(output, 'Restarted proxy nginx.');
+  assert.deepEqual(calls, [
+    {
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+      cwd,
+    },
+  ]);
+});
+
+test('pn status shows compose status plus project summary', () => {
+  const cwd = makeProxyProject();
+  fs.mkdirSync(path.join(cwd, 'ssl', 'certs', 'renewal'), { recursive: true });
+  fs.writeFileSync(
+    path.join(cwd, 'nginx', 'templates', 'test.example.cn.conf.template'),
+    'site'
+  );
+  fs.writeFileSync(
+    path.join(cwd, 'ssl', 'certs', 'renewal', 'test.example.cn.conf'),
+    'renewal'
+  );
+  networkAdd('frontend', { cwd });
+  const calls = [];
+
+  const output = statusProject(cwd, (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+  });
+
+  assert.deepEqual(calls, [{ args: ['ps'], cwd }]);
+  assert.match(output, /Sites:\n  - test\.example\.cn/);
+  assert.match(output, /Networks:\n  - frontend/);
+  assert.match(output, /Certificates:\n  - test\.example\.cn/);
 });
 
 test('pn reload validates nginx config and reloads the running proxy', () => {
@@ -161,6 +231,35 @@ test('pn add --run applies the site immediately', () => {
   ]);
 });
 
+test('pn add keeps existing site templates unless forced', () => {
+  const cwd = makeComposeProject();
+  const templatesDir = path.join(cwd, 'nginx', 'templates');
+  fs.mkdirSync(templatesDir, { recursive: true });
+  const templatePath = path.join(templatesDir, 'test.example.cn.conf.template');
+  fs.writeFileSync(templatePath, 'custom template');
+
+  const output = addSite('test.example.cn', '127.0.0.1:3000', {}, cwd);
+
+  assert.equal(
+    output,
+    'Site template already exists for test.example.cn. Use --force to overwrite.'
+  );
+  assert.equal(fs.readFileSync(templatePath, 'utf8'), 'custom template');
+});
+
+test('pn add --force overwrites an existing site template', () => {
+  const cwd = makeComposeProject();
+  const templatesDir = path.join(cwd, 'nginx', 'templates');
+  fs.mkdirSync(templatesDir, { recursive: true });
+  const templatePath = path.join(templatesDir, 'test.example.cn.conf.template');
+  fs.writeFileSync(templatePath, 'custom template');
+
+  const output = addSite('test.example.cn', '127.0.0.1:3000', { force: true }, cwd);
+
+  assert.match(output, /Added test\.example\.cn/);
+  assert.match(fs.readFileSync(templatePath, 'utf8'), /server host\.docker\.internal:3000;/);
+});
+
 test('pn add --run --cert applies the site and issues a certificate', () => {
   const cwd = makeComposeProject();
   fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
@@ -200,6 +299,54 @@ test('pn add --run --cert applies the site and issues a certificate', () => {
     ['exec', 'proxy-nginx', 'nginx', '-t'],
     ['exec', 'proxy-nginx', 'nginx', '-s', 'reload'],
     ['up', '-d', 'certbot'],
+  ]);
+});
+
+test('pn upgrade updates the linked git checkout of the cli', () => {
+  const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-package-'));
+  fs.mkdirSync(path.join(packageRoot, '.git'));
+  const calls = [];
+
+  const output = upgradeCli({
+    packageRoot,
+    execFile: (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+    },
+  });
+
+  assert.equal(output, 'Upgraded proxy-nginx-cli from git checkout.');
+  assert.deepEqual(calls, [
+    {
+      command: 'git',
+      args: ['-C', packageRoot, 'pull', '--ff-only'],
+      cwd: undefined,
+    },
+    {
+      command: 'npm',
+      args: ['install'],
+      cwd: packageRoot,
+    },
+  ]);
+});
+
+test('pn upgrade updates npm global installations', () => {
+  const packageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-package-'));
+  const calls = [];
+
+  const output = upgradeCli({
+    packageRoot,
+    execFile: (command, args, options) => {
+      calls.push({ command, args, cwd: options.cwd });
+    },
+  });
+
+  assert.equal(output, 'Upgraded proxy-nginx-cli from npm.');
+  assert.deepEqual(calls, [
+    {
+      command: 'npm',
+      args: ['install', '-g', 'proxy-nginx-cli@latest'],
+      cwd: undefined,
+    },
   ]);
 });
 

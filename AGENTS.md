@@ -32,10 +32,16 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn reset`: reinitialize skeleton and remove added site templates.
 - `pn add <domain> -H <host> -p <port>`: add a proxy site.
 - `pn add <domain> <target>`: add a proxy site from URL or `host:port` shorthand.
+- `pn add ... --force`: overwrite an existing site template. Without `--force`, existing site templates are preserved.
 - `pn add ... --run`: apply immediately by running the equivalent of `pn up`.
 - `pn add ... --cert`: implies apply, request cert, reload nginx, and start certbot renewal service.
 - `pn remove <domain>`: remove a site template.
 - `pn up`: build/start/recreate `proxy-nginx`.
+- `pn stop`: stop compose containers without deleting them.
+- `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs.
+- `pn restart`: recreate `proxy-nginx`; use after editing `nginx/templates/*.template`.
+- `pn status`: show compose status plus sites, attached networks, and cert renewal configs.
+- `pn upgrade`: upgrade the CLI itself, not a proxy project. Git-linked installs pull and npm install; npm installs run global npm install latest.
 - `pn reload`: run `nginx -t` then `nginx -s reload` in the running proxy container.
 - `pn cert <domain>`: request Let's Encrypt cert with certbot webroot, reload nginx, then start certbot renewal service.
 - `pn example`: create an example project.
@@ -70,7 +76,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 30 passing tests.
+Expected current test count: 39 passing tests.
 
 ## Server Notes
 
