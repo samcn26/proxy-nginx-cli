@@ -5,6 +5,7 @@ const path = require('node:path');
 const { test } = require('node:test');
 
 const {
+  addSite,
   certProject,
   createComposeRunner,
   reloadProject,
@@ -30,7 +31,7 @@ test('pn up starts proxy nginx with docker compose', () => {
   assert.equal(output, 'Started proxy nginx.');
   assert.deepEqual(calls, [
     {
-      args: ['up', '-d', '--build', 'proxy-nginx'],
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
       cwd,
     },
   ]);
@@ -69,7 +70,7 @@ test('pn cert issues a certificate and reloads nginx', () => {
 
   const output = certProject('test.example.cn', cwd, runner);
 
-  assert.equal(output, 'Issued certificate for test.example.cn and reloaded proxy nginx.');
+  assert.equal(output, 'Issued certificate for test.example.cn, reloaded proxy nginx, and started certificate renewal.');
   assert.deepEqual(calls, [
     {
       args: [
@@ -100,6 +101,76 @@ test('pn cert issues a certificate and reloads nginx', () => {
       args: ['exec', 'proxy-nginx', 'nginx', '-s', 'reload'],
       cwd,
     },
+    {
+      args: ['up', '-d', 'certbot'],
+      cwd,
+    },
+  ]);
+});
+
+test('pn add --run applies the site immediately', () => {
+  const cwd = makeComposeProject();
+  fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
+  const calls = [];
+  const runner = (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+    return { status: 0 };
+  };
+
+  const output = addSite('test.example.cn', '127.0.0.1:3000', {
+    run: true,
+    ssl: false,
+    runCompose: runner,
+  }, cwd);
+
+  assert.match(output, /Started proxy nginx/);
+  assert.deepEqual(calls, [
+    {
+      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+      cwd,
+    },
+  ]);
+});
+
+test('pn add --run --cert applies the site and issues a certificate', () => {
+  const cwd = makeComposeProject();
+  fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
+  const calls = [];
+  const runner = (args, options) => {
+    calls.push({ args, cwd: options.cwd });
+    return { status: 0 };
+  };
+
+  const output = addSite('test.example.cn', '127.0.0.1:3000', {
+    run: true,
+    cert: true,
+    runCompose: runner,
+  }, cwd);
+
+  assert.match(output, /Issued certificate for test.example.cn/);
+  assert.deepEqual(calls.map((call) => call.args), [
+    ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+    [
+      'run',
+      '--rm',
+      '--entrypoint',
+      'certbot',
+      'certbot',
+      'certonly',
+      '--webroot',
+      '-w',
+      '/var/www/certbot',
+      '-d',
+      'test.example.cn',
+      '--agree-tos',
+      '--register-unsafely-without-email',
+      '--no-eff-email',
+      '--non-interactive',
+      '--keep-until-expiring',
+    ],
+    ['exec', 'proxy-nginx', 'nginx', '-t'],
+    ['exec', 'proxy-nginx', 'nginx', '-s', 'reload'],
+    ['up', '-d', 'certbot'],
   ]);
 });
 
