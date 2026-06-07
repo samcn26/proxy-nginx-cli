@@ -296,6 +296,37 @@ test('pn cert backs up self-signed live certs before requesting a certificate', 
   );
 });
 
+test('pn cert ignores empty renewal configs left by failed certbot attempts', () => {
+  const cwd = makeComposeProject();
+  const liveDir = path.join(cwd, 'ssl', 'certs', 'live', 'test.example.cn');
+  const renewalDir = path.join(cwd, 'ssl', 'certs', 'renewal');
+  const renewalConf = path.join(renewalDir, 'test.example.cn.conf');
+  fs.mkdirSync(liveDir, { recursive: true });
+  fs.mkdirSync(renewalDir, { recursive: true });
+  fs.writeFileSync(path.join(liveDir, 'fullchain.pem'), 'self signed');
+  fs.writeFileSync(renewalConf, '');
+
+  const runner = () => ({ status: 0 });
+
+  certProject('test.example.cn', cwd, runner, () => '20260607154000');
+
+  assert.equal(fs.existsSync(liveDir), false);
+  assert.equal(fs.existsSync(renewalConf), false);
+  assert.equal(
+    fs.existsSync(
+      path.join(
+        cwd,
+        'ssl',
+        'certs',
+        'live',
+        'test.example.cn.bak.selfsigned.20260607154000',
+        'fullchain.pem'
+      )
+    ),
+    true
+  );
+});
+
 test('compose runner uses docker-compose when it works', () => {
   const attempts = [];
   const execFileSync = (command, args) => {
