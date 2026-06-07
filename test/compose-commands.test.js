@@ -133,6 +133,9 @@ test('compose runner uses docker-compose when it works', () => {
   const attempts = [];
   const execFileSync = (command, args) => {
     attempts.push([command, ...args]);
+    if (command === 'docker-compose' && args[0] === 'version') {
+      return 'Docker Compose version 5.1.3';
+    }
     return '';
   };
 
@@ -140,16 +143,17 @@ test('compose runner uses docker-compose when it works', () => {
   runner(['config'], { cwd: '/project' });
 
   assert.deepEqual(attempts, [
+    ['docker-compose', 'version'],
     ['docker-compose', 'config'],
   ]);
 });
 
-test('compose runner falls back to docker compose when docker-compose is not compose', () => {
+test('compose runner uses docker compose when docker-compose is a docker alias', () => {
   const attempts = [];
   const execFileSync = (command, args) => {
     attempts.push([command, ...args]);
-    if (command === 'docker-compose') {
-      throw new Error('unknown shorthand flag: d');
+    if (command === 'docker-compose' && args[0] === 'version') {
+      return 'Docker version 26.1.3';
     }
     return '';
   };
@@ -158,7 +162,7 @@ test('compose runner falls back to docker compose when docker-compose is not com
   runner(['up', '-d', '--build', 'proxy-nginx'], { cwd: '/project' });
 
   assert.deepEqual(attempts, [
-    ['docker-compose', 'up', '-d', '--build', 'proxy-nginx'],
+    ['docker-compose', 'version'],
     ['docker', 'compose', 'up', '-d', '--build', 'proxy-nginx'],
   ]);
 });
