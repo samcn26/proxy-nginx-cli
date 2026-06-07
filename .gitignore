@@ -33,6 +33,10 @@ coverage/
 # Generated examples
 example/
 
+# Local agent memory
+MEMORY.md
+.memory.md
+
 # Python
 __pycache__/
 *.py[cod]
