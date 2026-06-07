@@ -1,0 +1,48 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies and package caches
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Build output
+dist/
+build/
+out/
+coverage/
+
+# Generated examples
+example/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Temporary files
+tmp/
+temp/
+.cache/
+
+# Reference checkout
+ref/

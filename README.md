@@ -1,0 +1,163 @@
+# proxy-nginx-cli
+
+CLI for creating and operating a small Docker-based Nginx reverse proxy with optional Let's Encrypt certificates.
+
+## Install for Local Development
+
+```bash
+npm install
+npm link
+pn --help
+pn --help cn
+```
+
+## Commands
+
+```bash
+pn init
+pn reset
+pn add <domain> -H <host> -p <port>
+pn add <domain> <target-url>
+pn remove <domain>
+pn up
+pn reload
+pn cert <domain>
+pn example
+pn example --run
+pn example <domain> --run
+pn example <domain> --run --cert
+pn example --stop
+```
+
+## Add a Proxy Site
+
+```bash
+pn init
+pn add app.example.com -H host.docker.internal -p 6666
+pn up
+```
+
+Equivalent URL form:
+
+```bash
+pn add app.example.com http://host.docker.internal:6666
+```
+
+By default, `pn add` generates HTTP and HTTPS Nginx config. Use `--no-ssl` for HTTP-only proxying:
+
+```bash
+pn add local.example.test http://host.docker.internal:6666 --no-ssl
+```
+
+## Local Example
+
+Generate a local example:
+
+```bash
+pn example
+```
+
+Run it:
+
+```bash
+pn example --run
+curl -H 'Host: local.example.test' http://127.0.0.1/
+```
+
+Stop it:
+
+```bash
+pn example --stop
+```
+
+Browser note: local browser testing needs a hosts entry because browsers do not let you manually set the `Host` header:
+
+```text
+127.0.0.1 local.example.test
+```
+
+Then open:
+
+```text
+http://local.example.test
+```
+
+## Online Example
+
+Prerequisites:
+
+- Domain DNS points to the server.
+- Server firewall/security group allows `80` and `443`.
+- Docker and `docker-compose` are installed.
+- No other service is using ports `80`, `443`, or `6666`.
+
+Start an HTTP example with a real domain:
+
+```bash
+pn example app.example.com --run
+```
+
+Open:
+
+```text
+http://app.example.com
+```
+
+Request a certificate and reload Nginx:
+
+```bash
+pn cert app.example.com
+pn reload
+```
+
+Or run the online example and request the certificate in one command:
+
+```bash
+pn example app.example.com --run --cert
+```
+
+Then open:
+
+```text
+https://app.example.com
+```
+
+## Generated Project Layout
+
+`pn init` creates:
+
+```text
+Dockerfile
+docker-compose.yml
+.env
+nginx/
+  nginx.conf
+  docker-entrypoint.d/
+  templates/
+ssl/
+  certs/
+  www/
+logs/
+```
+
+`pn example` creates:
+
+```text
+example/
+  backend/
+    package.json
+    server.js
+  proxy/
+    Dockerfile
+    docker-compose.yml
+    .env
+    nginx/
+    ssl/
+    logs/
+```
+
+## Notes
+
+- `pn up` and `pn reload` use `docker-compose`.
+- `pn cert` uses the compose `certbot` service with HTTP-01 webroot validation.
+- Keep `FORCE_HTTPS=false` until the first certificate has been issued if you are manually editing `.env`.

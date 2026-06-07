@@ -1,0 +1,30 @@
+{
+  "name": "proxy-nginx-cli",
+  "version": "0.0.1",
+  "description": "CLI for managing nginx proxy deployments.",
+  "main": "lib/cli.js",
+  "bin": {
+    "pn": "./bin/pn"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "nginx",
+    "proxy",
+    "cli",
+    "ssl"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
