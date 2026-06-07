@@ -129,7 +129,7 @@ test('pn cert backs up self-signed live certs before requesting a certificate', 
   );
 });
 
-test('compose runner uses docker-compose', () => {
+test('compose runner uses docker-compose when it works', () => {
   const attempts = [];
   const execFileSync = (command, args) => {
     attempts.push([command, ...args]);
@@ -141,5 +141,24 @@ test('compose runner uses docker-compose', () => {
 
   assert.deepEqual(attempts, [
     ['docker-compose', 'config'],
+  ]);
+});
+
+test('compose runner falls back to docker compose when docker-compose is not compose', () => {
+  const attempts = [];
+  const execFileSync = (command, args) => {
+    attempts.push([command, ...args]);
+    if (command === 'docker-compose') {
+      throw new Error('unknown shorthand flag: d');
+    }
+    return '';
+  };
+
+  const runner = createComposeRunner(execFileSync);
+  runner(['up', '-d', '--build', 'proxy-nginx'], { cwd: '/project' });
+
+  assert.deepEqual(attempts, [
+    ['docker-compose', 'up', '-d', '--build', 'proxy-nginx'],
+    ['docker', 'compose', 'up', '-d', '--build', 'proxy-nginx'],
   ]);
 });
