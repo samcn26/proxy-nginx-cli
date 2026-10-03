@@ -14,7 +14,7 @@ English | [简体中文](README.zh-CN.md)
 - [Requirements and install](#requirements-and-install)
 - [Quick start](#quick-start)
 - [Command reference](#command-reference)
-- [Guides](#guides): [sites](#sites) · [certificates](#certificates) · [basic auth](#basic-auth) · [applying changes](#how-changes-are-applied) · [networks](#docker-networks) · [logs](#logs) · [upgrading](#upgrading-and-rolling-back) · [other services and existing setups](#other-services-and-existing-setups) · [examples](#examples)
+- [Guides](#guides): [sites](#sites) · [certificates](#certificates) · [basic auth](#basic-auth) · [applying changes](#how-changes-are-applied) · [networks](#docker-networks) · [logs](#logs) · [upgrading](#upgrading-and-rolling-back) · [several projects on one server](#several-projects-on-one-server) · [other services and existing setups](#other-services-and-existing-setups) · [examples](#examples)
 - [Project layout and configuration](#project-layout-and-configuration)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
 - [Agent skill](#agent-skill) · [Development](#development)
@@ -217,7 +217,7 @@ Check that the project is healthy and, for a domain, that certificates can be is
 pn doctor [domain] [--ip <address>] [--json]
 ```
 
-Project checks: Docker Compose works; project files are up to date (`pn migrate` pending?); the proxy container is running (and its nginx version); the templates on disk pass `nginx -t`; ports 80/443 are free when the proxy is stopped; certificates are valid, not expiring, not self-signed or staging, and the renewal service is running.
+Project checks: Docker Compose works; no other pn project owns the `proxy-nginx` container; project files are up to date (`pn migrate` pending?); the proxy container is running (and its nginx version); the templates on disk pass `nginx -t`; ports 80/443 are free when the proxy is stopped; certificates are valid, not expiring, not self-signed or staging, and the renewal service is running.
 
 With a domain (and each of its aliases): the site template exists; DNS A/AAAA records exist; the address matches this server; no CAA record forbids Let's Encrypt; a test file under `/.well-known/acme-challenge/` is served over HTTP by this proxy (and over IPv6 when an AAAA record exists, since Let's Encrypt prefers IPv6); HTTPS on port 443 serves a certificate.
 
@@ -449,6 +449,32 @@ pn rollback --yes && pn restart
 
 Check the running Nginx version with `pn status`. Images are pinned in `.env` (`NGINX_IMAGE`, `CERTBOT_IMAGE`); a plain `pn up` keeps what is built. To take new patch releases of the pinned tags use `pn up --pull`; to move to another minor version change `NGINX_IMAGE` first.
 
+### Several projects on one server
+
+A server has one pair of ports 80/443, so it runs **one** pn proxy, and that proxy serves **all** of your projects. Do not run `pn init` in every project; the generated containers are named `proxy-nginx` and `proxy-certbot`, so a second proxy cannot start next to the first one.
+
+```text
+/srv/proxy/        the pn project (pn init here): the only proxy, all sites are added here
+/srv/project-a/    project A's own docker-compose.yml (app, database, ...)
+/srv/project-b/    project B's own docker-compose.yml
+```
+
+Add every project's domains to the one proxy:
+
+```bash
+cd /srv/proxy
+pn add a.example.com 127.0.0.1:3001 --run --cert     # project A
+pn add b.example.com 127.0.0.1:3002 --run --cert     # project B
+pn status                                            # all sites in one place
+```
+
+How the proxy reaches an application:
+
+1. **Published host port (simplest).** Publish the port in the application's compose file (`ports: ["127.0.0.1:3001:3000"]`) and use `127.0.0.1:3001` as the target (it is mapped to `host.docker.internal`). Give each project its own host port.
+2. **Shared Docker network.** `docker network create shared`, put the application's containers on it (`networks: { shared: { external: true } }`), run `pn network add shared --run`, and use the container name: `pn add a.example.com http://a-web:3000 --run`. Container names must be unique on that network.
+
+If you run `pn up` in a second pn project while the first one's proxy exists, `pn` stops and tells you which project owns the proxy; `pn doctor` reports it too. Keeping the proxy in a neutral directory (instead of inside one project) means redeploying or deleting a project never touches the proxy. To move it: `pn down` in the old directory, copy the whole directory (`ssl/certs`, `.env`, `nginx/templates`, `nginx/auth`, `sites`), `pn up` in the new one, and check with `pn doctor`. Two proxies on one machine would need separate public IP addresses and edited ports and container names in the compose files; `pn` does not manage that.
+
 ### Other services and existing setups
 
 **Can I edit `docker-compose.yml`, or put my own services in it?** Yes. `pn` edits that file in two situations only, always through a YAML parser that keeps comments, ordering and everything it does not manage:
@@ -536,6 +562,7 @@ Back up: `nginx/templates/`, `nginx/auth/`, `sites/`, `.env`, `ssl/certs/`. To m
 - **Ports 80/443 already in use.** Another service owns them. `pn doctor` shows this when the proxy is stopped; find it with `ss -ltnp | grep -E ':(80|443) '`.
 - **WebSockets.** Supported out of the box; no extra option needed.
 - **Can I edit the generated files?** Site templates, `.env`, the compose file: yes. Base files (`nginx.conf`, hooks, Dockerfile) can be edited too, but `pn migrate` will propose to replace them (with a backup) when a new version changes them.
+- **Can I have a pn project for project A and another for project B on one server?** No: one pn proxy per server, shared by all projects. See [Several projects on one server](#several-projects-on-one-server).
 - **Can I put my own services (a database) in `docker-compose.yml`?** Yes, `pn` leaves them alone, but a separate compose project is cleaner. See [Other services and existing setups](#other-services-and-existing-setups).
 - **How do I install without npm's public registry?** From GitHub: `npm install -g github:samcn26/proxy-nginx-cli`; from a tarball: run `npm pack` in the repository and `npm install -g ./proxy-nginx-cli-<version>.tgz` on the server; or keep a git checkout and `npm link` it, which `pn upgrade` updates with `git pull`. `pn upgrade` on a copy installed from a tarball or GitHub looks for the package on the npm registry, so reinstall the same way instead.
 - **Is a wildcard certificate supported?** Not yet (it needs DNS-01 validation).

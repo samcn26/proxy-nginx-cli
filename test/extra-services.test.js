@@ -157,3 +157,65 @@ test('a network shared with another service is not removed from the top level', 
   assert.deepEqual(after.networks, { backend: { external: true } });
   assert.deepEqual(after.services.timescaledb.networks, ['backend']);
 });
+
+const { doctorProject, proxyContainerWorkingDir, restartProject, upProject } = require('../lib/commands');
+
+test('pn up and pn restart refuse to run next to a proxy that belongs to another project', () => {
+  const cwd = makeProject();
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-other-'));
+
+  for (const run of [upProject, restartProject]) {
+    const calls = [];
+    assert.throws(
+      () => run(cwd, (args) => calls.push(args), { proxyOwner: () => other }),
+      (error) => {
+        assert.match(error.message, new RegExp(`already exists and belongs to another project: ${other}`));
+        assert.match(error.message, /Only one pn proxy can run per server/);
+        assert.match(error.message, new RegExp(`cd ${other} && pn add`));
+        assert.match(error.message, /docker rm -f proxy-nginx proxy-certbot/);
+        return true;
+      }
+    );
+    assert.deepEqual(calls, []);
+  }
+});
+
+test('pn up and pn restart proceed when the proxy belongs to this project or does not exist', () => {
+  const cwd = makeProject();
+
+  for (const owner of [() => cwd, () => null, () => `${cwd}/`]) {
+    const calls = [];
+    upProject(cwd, (args) => calls.push(args), { proxyOwner: owner });
+    assert.ok(calls.some((args) => args[0] === 'up'));
+  }
+});
+
+test('the owner of the proxy container is read from the compose working directory label', () => {
+  const asked = [];
+  const exec = (command, args) => {
+    asked.push([command, ...args]);
+    return '/srv/proxy\n';
+  };
+
+  assert.equal(proxyContainerWorkingDir(exec), '/srv/proxy');
+  assert.deepEqual(asked[0].slice(0, 2), ['docker', 'inspect']);
+  assert.match(asked[0].join(' '), /com\.docker\.compose\.project\.working_dir.*proxy-nginx/);
+  assert.equal(proxyContainerWorkingDir(() => '<no value>\n'), null);
+  assert.equal(proxyContainerWorkingDir(() => '\n'), null);
+  assert.equal(proxyContainerWorkingDir(() => { throw new Error('No such object'); }), null);
+});
+
+test('pn doctor reports a proxy that belongs to another project', async () => {
+  const cwd = makeProject();
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-other-'));
+
+  const report = await doctorProject(undefined, { cwd, runCompose: () => undefined, certificateReport: () => [], proxyOwner: () => other });
+
+  const owner = report.checks.find((entry) => entry.id === 'owner');
+  assert.equal(owner.status, 'fail');
+  assert.match(owner.message, new RegExp(`belongs to another pn project \\(${other}\\)`));
+  assert.match(owner.hint, new RegExp(`cd ${other}`));
+
+  const own = await doctorProject(undefined, { cwd, runCompose: () => undefined, certificateReport: () => [], proxyOwner: () => cwd });
+  assert.equal(own.checks.find((entry) => entry.id === 'owner'), undefined);
+});
