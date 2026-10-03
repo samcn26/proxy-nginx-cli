@@ -5,6 +5,7 @@
 ### Added
 - `pn template list|edit`, `pn logs`, `pn migrate`, `pn rollback`, `pn status --json`.
 - `pn migrate --yes --run` rolls back automatically when the restart fails.
+- `pn auth add|remove|disable|list`: per-site basic auth (apr1 hashes, no extra tools; project schema 3 adds the `nginx/auth` mount, run `pn migrate --yes` on older projects).
 - `pn up --pull` / `pn restart --pull` to pick up patch releases of the pinned images.
 - `pn status` shows the running nginx version.
 - `pn add --force-https` / `--no-force-https`: per-site HTTP→HTTPS redirect.

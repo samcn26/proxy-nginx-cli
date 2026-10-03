@@ -28,6 +28,10 @@ pn add <domain> <host:port> --allow <cidr> --max-body-size <size> --timeout <sec
 pn add <domain> <host:port> --force-https | --no-force-https
 pn remove <domain>
 pn remove <domain> --run [--purge-cert]
+pn auth add <domain> <user> [--password-stdin] [--run]
+pn auth remove <domain> <user>
+pn auth disable <domain> [--run]
+pn auth list [domain]
 pn template list
 pn template edit <domain> [--run]
 pn logs [domain] [-n <lines>] [-f] [--error]
@@ -146,6 +150,26 @@ pn add admin.example.com 127.0.0.1:3000 \
 - `--access-log` writes `logs/<domain>.access.log` (read it with `pn logs <domain>`).
 - `--hsts-subdomains` adds `includeSubDomains` to HSTS. It is off by default because on an apex domain it forces HTTPS for every sibling subdomain.
 - `--force-https` / `--no-force-https` fix the HTTP→HTTPS redirect for this site. Without either flag the site follows `FORCE_HTTPS` from `.env`. Use `--no-force-https` for the one site that must keep answering plain HTTP (webhooks, legacy clients) without turning the redirect off for the whole project.
+
+### Basic auth (username and password)
+
+Put a login in front of a site without changing the application behind it (admin panels, staging sites, small tools):
+
+```bash
+pn auth add admin.example.com alice --run   # asks for the password (not echoed); first user turns auth on
+pn auth add admin.example.com bob           # more users, or change a password
+pn auth remove admin.example.com bob
+pn auth list
+pn auth disable admin.example.com --run     # turn auth off again (deletes the users)
+```
+
+- Visitors get a browser login prompt; without valid credentials the request never reaches your application. The ACME challenge path stays open so certificates keep renewing.
+- Adding, changing or removing users takes effect immediately. Turning auth on or off changes the site template, so it needs `--run` (or `pn up`); until then the site keeps its previous state.
+- Removing the **last** user is refused, because it would lock everyone out; use `pn auth disable` to switch auth off.
+- Passwords are stored as apr1 hashes in `nginx/auth/<domain>.htpasswd` (read-only mount in the container) and are never put on the command line. Scripts can pipe one in: `printf '%s\n' "$PW" | pn auth add <domain> <user> --password-stdin`. Minimum length is 8.
+- Only for sites with SSL (passwords would otherwise travel in clear text). If the site can still be reached over plain HTTP (`FORCE_HTTPS=false` or `--no-force-https`) `pn auth add` warns you.
+- Projects created before this feature need `pn migrate --yes` once (it adds the `nginx/auth` mount).
+- It combines with `--allow`: allow-list first, login second.
 
 ### Editing templates
 

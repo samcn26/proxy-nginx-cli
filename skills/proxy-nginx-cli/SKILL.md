@@ -98,6 +98,19 @@ pn remove app.example.com --run
 pn remove app.example.com --run --purge-cert   # also delete its certificate
 ```
 
+**Protect a site with a login (basic auth)**
+
+```bash
+pn auth add admin.example.com alice --run        # interactive, no echo; first user enables auth
+printf '%s\n' "$PASSWORD" | pn auth add admin.example.com bob --password-stdin   # scripts
+pn auth remove admin.example.com bob             # not the last user (that would lock everyone out)
+pn auth disable admin.example.com --run          # turn it off
+pn auth list
+```
+
+Never put passwords on the command line or in files you commit. Only SSL sites; user changes apply
+immediately, enabling/disabling needs `--run`. Old projects need `pn migrate --yes` first.
+
 **Update nginx / certbot images** (images are pinned; patch releases are not automatic)
 
 ```bash

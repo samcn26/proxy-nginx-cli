@@ -121,6 +121,19 @@ jobs:
           expect 200 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
           "$PN" status | grep -q '^Proxy: running, nginx 1\.'
 
+          # Basic auth: nginx in Docker must accept the apr1 hashes pn writes.
+          printf 'correct-horse-1\n' | "$PN" auth add secure.example.test alice --password-stdin --run
+          expect 401 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          expect 200 -k -u alice:correct-horse-1 --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          expect 401 -k -u alice:wrong-password --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          printf 'battery-staple-2\n' | "$PN" auth add secure.example.test bob --password-stdin
+          expect 200 -k -u bob:battery-staple-2 --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          "$PN" auth remove secure.example.test bob
+          expect 401 -k -u bob:battery-staple-2 --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          if "$PN" auth remove secure.example.test alice; then echo "expected the last user to be protected"; exit 1; fi
+          "$PN" auth disable secure.example.test --run
+          expect 200 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+
           # Log rotation hook is installed and runs.
           docker exec proxy-nginx sh -c 'ls /docker-entrypoint.d/ && LOG_ROTATE_SIZE_MB=1000 sh /docker-entrypoint.d/60-rotate-logs.sh --once'
 

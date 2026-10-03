@@ -71,7 +71,7 @@ test('pn migrate only reports changes unless --yes is given', () => {
 
   const output = migrateProject({ cwd });
 
-  assert.match(output, /Project schema 1, latest 2/);
+  assert.match(output, /Project schema 1, latest 3/);
   assert.match(output, /~ Dockerfile/);
   assert.match(output, /\+ nginx\/templates\/00-connection-upgrade\.conf\.template/);
   assert.match(output, /\+ nginx\/docker-entrypoint\.d\/60-rotate-logs\.sh/);
@@ -88,7 +88,7 @@ test('pn migrate --yes updates base files, backs up the old ones, and leaves sit
 
   const output = migrateProject({ cwd, yes: true, now: new Date('2026-10-03T08:09:10Z') });
 
-  assert.match(output, /Migrated project to schema 2/);
+  assert.match(output, /Migrated project to schema 3/);
   assert.match(output, /\.pn-backup\/20261003080910\//);
   assert.match(read(cwd, 'Dockerfile'), /^ARG NGINX_IMAGE=/m);
   assert.match(read(cwd, 'nginx', 'nginx.conf'), /gzip on;/);
@@ -96,7 +96,7 @@ test('pn migrate --yes updates base files, backs up the old ones, and leaves sit
   assert.ok(fs.existsSync(path.join(cwd, 'nginx', 'templates', '00-connection-upgrade.conf.template')));
   assert.ok(fs.statSync(path.join(cwd, 'nginx', 'docker-entrypoint.d', '60-rotate-logs.sh')).mode & 0o100);
   assert.ok(fs.statSync(path.join(cwd, 'sites')).isDirectory());
-  assert.deepEqual(JSON.parse(read(cwd, '.pn.json')), { schemaVersion: 2 });
+  assert.deepEqual(JSON.parse(read(cwd, '.pn.json')), { schemaVersion: 3 });
   assert.match(read(cwd, 'nginx', 'templates', 'app.example.com.conf.template'), /# my edit\n$/);
 
   const compose = read(cwd, 'docker-compose.yml');
@@ -119,8 +119,8 @@ test('pn migrate is idempotent', () => {
   const compose = read(cwd, 'docker-compose.yml');
   const env = read(cwd, '.env');
 
-  assert.equal(migrateProject({ cwd }), 'Project is up to date (schema 2).');
-  assert.equal(migrateProject({ cwd, yes: true }), 'Project is up to date (schema 2).');
+  assert.equal(migrateProject({ cwd }), 'Project is up to date (schema 3).');
+  assert.equal(migrateProject({ cwd, yes: true }), 'Project is up to date (schema 3).');
   assert.equal(read(cwd, 'docker-compose.yml'), compose);
   assert.equal(read(cwd, '.env'), env);
 });
@@ -129,7 +129,7 @@ test('a freshly initialized project needs no migration', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-migrate-'));
   initProject(cwd);
 
-  assert.equal(migrateProject({ cwd }), 'Project is up to date (schema 2).');
+  assert.equal(migrateProject({ cwd }), 'Project is up to date (schema 3).');
 });
 
 test('migrated compose files keep working with network commands and static sites', () => {
@@ -190,7 +190,7 @@ test('pn migrate --yes writes a manifest listing what it changed and created', (
   const manifest = JSON.parse(read(cwd, '.pn-backup', '20261003080910', 'manifest.json'));
   const byPath = Object.fromEntries(manifest.files.map((file) => [file.path, file.action]));
   assert.equal(manifest.schemaVersionBefore, 1);
-  assert.equal(manifest.schemaVersionAfter, 2);
+  assert.equal(manifest.schemaVersionAfter, 3);
   assert.equal(byPath.Dockerfile, 'update');
   assert.equal(byPath['docker-compose.yml'], 'update');
   assert.equal(byPath['nginx/docker-entrypoint.d/60-rotate-logs.sh'], 'create');
@@ -358,7 +358,7 @@ test('the error points at a pn project in a subdirectory or a parent directory',
   assert.throws(() => migrateProject({ cwd: nested }), /No docker-compose\.yml found\. Run pn init first\. A pn project is at: \.\.\. cd there/);
 
   // The proxy directory itself is fine.
-  assert.equal(migrateProject({ cwd: proxy }), 'Project is up to date (schema 2).');
+  assert.equal(migrateProject({ cwd: proxy }), 'Project is up to date (schema 3).');
 });
 
 test('compose files without any services are still treated as projects', () => {
@@ -366,4 +366,25 @@ test('compose files without any services are still treated as projects', () => {
   fs.writeFileSync(path.join(cwd, 'docker-compose.yml'), 'services: {}\n');
 
   assert.doesNotThrow(() => require('../lib/commands').stopProject(cwd, () => {}));
+});
+
+test('a schema 2 project (before basic auth) only needs the auth mount and the new schema number', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-schema2-'));
+  initProject(cwd);
+  const compose = path.join(cwd, 'docker-compose.yml');
+  fs.writeFileSync(compose, read(cwd, 'docker-compose.yml').replace('      - ./nginx/auth:/etc/nginx/auth:ro\n', ''));
+  fs.writeFileSync(path.join(cwd, '.pn.json'), '{\n  "schemaVersion": 2\n}\n');
+  fs.rmSync(path.join(cwd, 'nginx', 'auth'), { recursive: true });
+
+  const preview = migrateProject({ cwd });
+  assert.match(preview, /Project schema 2, latest 3/);
+  assert.match(preview, /~ docker-compose\.yml\n\s+- mount \.\/nginx\/auth for site basic auth/);
+  assert.doesNotMatch(preview, /Dockerfile|nginx\.conf|\.env/);
+
+  migrateProject({ cwd, yes: true });
+
+  assert.match(read(cwd, 'docker-compose.yml'), /- \.\/nginx\/auth:\/etc\/nginx\/auth:ro/);
+  assert.ok(fs.statSync(path.join(cwd, 'nginx', 'auth')).isDirectory());
+  assert.deepEqual(JSON.parse(read(cwd, '.pn.json')), { schemaVersion: 3 });
+  assert.equal(migrateProject({ cwd }), 'Project is up to date (schema 3).');
 });

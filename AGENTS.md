@@ -46,7 +46,7 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn add ... --cert`: implies apply, request cert, reload nginx, and start certbot renewal service.
 - `pn add ... --alias/--www/--redirect-aliases`: extra names; certs cover all names in the site template.
 - `pn add ... --template static|spa|redirect`, `--allow`, `--max-body-size`, `--timeout`, `--access-log`, `--hsts-subdomains`, `--force-https`/`--no-force-https` (per-site redirect; default follows `FORCE_HTTPS` in `.env`).
-- `pn template list|edit <domain> [--run]`, `pn logs [domain] [-f] [--error]`, `pn migrate [--yes] [--run]`, `pn rollback [backup] [--yes] [--run] [--force] [--list]`.
+- `pn auth add|remove|disable|list` (basic auth: apr1 hashes in `nginx/auth/<domain>.htpasswd`, marker lines `# pn:auth` in the site template; the last user cannot be removed, use `disable`), `pn template list|edit <domain> [--run]`, `pn logs [domain] [-f] [--error]`, `pn migrate [--yes] [--run]`, `pn rollback [backup] [--yes] [--run] [--force] [--list]`.
 - `pn remove <domain>`: remove a site template.
 - `pn remove <domain> --run [--purge-cert]`: remove a site template, apply like `pn add --run`, optionally delete its certificate.
 - `pn up [--pull]`: build/start/recreate `proxy-nginx`; tests the new config in a throwaway container first when the proxy is running. `--pull` first runs `build --pull proxy-nginx` and `pull certbot` (patch releases of the pinned tags).
@@ -96,7 +96,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 123 passing tests.
+Expected current test count: 139 passing tests.
 
 Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 
