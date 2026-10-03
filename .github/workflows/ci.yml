@@ -26,7 +26,7 @@ jobs:
       - run: npm pack --dry-run
       - name: Scan for owner-specific strings
         run: |
-          if grep -rIn "jestar" --exclude-dir=node_modules --exclude-dir=.git --exclude=AGENTS.md --exclude=package-lock.json .; then
+          if grep -rIn "jest[a]r" --exclude-dir=node_modules --exclude-dir=.git --exclude=AGENTS.md --exclude=package-lock.json .; then
             echo "owner-specific string found"; exit 1
           fi
 
@@ -70,39 +70,50 @@ jobs:
       - name: Run proxy, apply changes without restart, roll back, remove
         working-directory: ${{ runner.temp }}/proj
         run: |
-          set -eu
+          set -eux
           python3 -m http.server 3000 --bind 0.0.0.0 >/dev/null 2>&1 &
           sleep 1
           "$PN" up
-          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          # nginx -s reload only signals the master; give the new workers a moment.
+          expect() {
+            want=$1; shift
+            for _ in $(seq 1 30); do
+              got=$(curl -s -o /dev/null -w '%{http_code}' "$@" || true)
+              if [ "$got" = "$want" ]; then return 0; fi
+              sleep 0.5
+            done
+            echo "expected HTTP $want, got $got for: $*"
+            return 1
+          }
 
           started=$(docker inspect -f '{{.State.StartedAt}}' proxy-nginx)
 
           # Add a site with --run: reachable, container not restarted.
           "$PN" add live.example.test 127.0.0.1:3000 --no-ssl --run
-          test "$(code -H 'Host: live.example.test' http://127.0.0.1/)" = 200
+          expect 200 -H 'Host: live.example.test' http://127.0.0.1/
           test "$(docker inspect -f '{{.State.StartedAt}}' proxy-nginx)" = "$started"
 
           # HTTPS with the generated self-signed certificate.
           "$PN" add secure.example.test 127.0.0.1:3000 --run
-          test "$(code -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/)" = 200
+          expect 200 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
 
           # Static site and unknown host.
           "$PN" add files.example.test --template static --no-ssl --run
+          expect 200 -H 'Host: files.example.test' http://127.0.0.1/
           curl -fsS -H 'Host: files.example.test' http://127.0.0.1/ | grep -q files.example.test
-          test "$(code -H 'Host: nobody.example.test' http://127.0.0.1/)" = 404
+          expect 404 -H 'Host: nobody.example.test' http://127.0.0.1/
 
           # An invalid template must not break the running proxy.
           echo 'bogus_directive on;' >> nginx/templates/live.example.test.conf.template
           if "$PN" add other.example.test 127.0.0.1:3000 --no-ssl --run; then echo "expected failure"; exit 1; fi
           if "$PN" restart; then echo "expected failure"; exit 1; fi
-          test "$(code -H 'Host: live.example.test' http://127.0.0.1/)" = 200
+          expect 200 -H 'Host: live.example.test' http://127.0.0.1/
           test "$(docker inspect -f '{{.State.StartedAt}}' proxy-nginx)" = "$started"
 
           # Fix it, remove a site, status --json.
           sed -i '/bogus_directive/d' nginx/templates/live.example.test.conf.template
           "$PN" remove live.example.test --run
-          test "$(code -H 'Host: live.example.test' http://127.0.0.1/)" = 404
+          expect 404 -H 'Host: live.example.test' http://127.0.0.1/
           "$PN" status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["proxy"]["running"]; assert any(s["domain"]=="secure.example.test" for s in d["sites"])'
 
           # Log rotation hook is installed and runs.
