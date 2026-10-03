@@ -26,10 +26,10 @@ test('pn add rejects domains that are not plain hostnames', () => {
     assert.throws(() => addSite(domain, '127.0.0.1:3000', {}, cwd), /Invalid domain/);
   }
 
-  assert.deepEqual(
-    fs.readdirSync(path.join(cwd, 'nginx', 'templates')),
-    ['00-unmatched-host.conf.template']
-  );
+  assert.deepEqual(fs.readdirSync(path.join(cwd, 'nginx', 'templates')).sort(), [
+    '00-connection-upgrade.conf.template',
+    '00-unmatched-host.conf.template',
+  ]);
 });
 
 test('pn add normalizes domain case', () => {

@@ -49,7 +49,9 @@ test('pn init creates a proxy nginx project skeleton', () => {
   assert.ok(fs.existsSync(path.join(cwd, 'logs')));
 
   const dockerfile = fs.readFileSync(path.join(cwd, 'Dockerfile'), 'utf8');
-  assert.match(dockerfile, /FROM nginx:latest/);
+  assert.match(dockerfile, /^ARG NGINX_IMAGE=nginx:\d+\.\d+$/m);
+  assert.match(dockerfile, /^FROM \$\{NGINX_IMAGE\}$/m);
+  assert.doesNotMatch(dockerfile, /:latest/);
   assert.doesNotMatch(dockerfile, /apk add/);
   assert.match(dockerfile, /rm -f \/etc\/nginx\/conf\.d\/default\.conf/);
 });
