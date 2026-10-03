@@ -325,3 +325,45 @@ test('pn migrate --yes --run reports when the restart after rollback also fails'
     /Restarting with the previous files also failed: docker daemon unavailable/
   );
 });
+
+const APP_COMPOSE = 'services:\n  web:\n    image: app\n  db:\n    image: postgres\n';
+
+test('pn commands refuse a directory whose compose file has other services but no proxy-nginx', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-notpn-'));
+  fs.writeFileSync(path.join(cwd, 'docker-compose.yml'), APP_COMPOSE);
+
+  for (const run of [
+    () => migrateProject({ cwd }),
+    () => rollbackProject({ cwd }),
+    () => networkAdd('frontend', { cwd }),
+  ]) {
+    assert.throws(run, /defines web, db but no proxy-nginx service, so this is not a pn project directory\. Run pn from the directory where you ran pn init\./);
+  }
+
+  assert.deepEqual(fs.readdirSync(cwd), ['docker-compose.yml']);
+  assert.equal(read(cwd, 'docker-compose.yml'), APP_COMPOSE);
+});
+
+test('the error points at a pn project in a subdirectory or a parent directory', () => {
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-notpn-'));
+  fs.writeFileSync(path.join(app, 'docker-compose.yml'), APP_COMPOSE);
+  const proxy = path.join(app, 'proxy');
+  fs.mkdirSync(proxy);
+  initProject(proxy);
+
+  assert.throws(() => migrateProject({ cwd: app }), /A pn project is at: proxy\. cd there/);
+
+  // From a nested directory without any compose file, the parent project is found.
+  const nested = path.join(proxy, 'sites');
+  assert.throws(() => migrateProject({ cwd: nested }), /No docker-compose\.yml found\. Run pn init first\. A pn project is at: \.\.\. cd there/);
+
+  // The proxy directory itself is fine.
+  assert.equal(migrateProject({ cwd: proxy }), 'Project is up to date (schema 2).');
+});
+
+test('compose files without any services are still treated as projects', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-notpn-'));
+  fs.writeFileSync(path.join(cwd, 'docker-compose.yml'), 'services: {}\n');
+
+  assert.doesNotThrow(() => require('../lib/commands').stopProject(cwd, () => {}));
+});
