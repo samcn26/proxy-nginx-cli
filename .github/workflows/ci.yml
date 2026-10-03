@@ -116,6 +116,11 @@ jobs:
           expect 404 -H 'Host: live.example.test' http://127.0.0.1/
           "$PN" status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["proxy"]["running"]; assert any(s["domain"]=="secure.example.test" for s in d["sites"])'
 
+          # Pulling newer base images, then recreating, keeps everything working.
+          "$PN" restart --pull
+          expect 200 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
+          "$PN" status | grep -q '^Proxy: running, nginx 1\.'
+
           # Log rotation hook is installed and runs.
           docker exec proxy-nginx sh -c 'ls /docker-entrypoint.d/ && LOG_ROTATE_SIZE_MB=1000 sh /docker-entrypoint.d/60-rotate-logs.sh --once'
 

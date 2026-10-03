@@ -159,7 +159,9 @@ test('pn status shows compose status plus project summary', () => {
     calls.push({ args, cwd: options.cwd });
   });
 
-  assert.deepEqual(calls, [{ args: ['ps'], cwd }]);
+  assert.deepEqual(calls[0], { args: ['ps'], cwd });
+  assert.ok(calls.slice(1).every((call) => call.args[0] === 'exec'));
+  assert.match(output, /Proxy: running\n/);
   assert.match(output, /Sites:\n  - test\.example\.cn/);
   assert.match(output, /Networks:\n  - frontend/);
   assert.match(output, /Certificates:\n  - test\.example\.cn/);

@@ -25,6 +25,7 @@ pn add <domain> <host:port> --alias <domain> --www --redirect-aliases
 pn add <domain> --template static|spa
 pn add <domain> <url> --template redirect
 pn add <domain> <host:port> --allow <cidr> --max-body-size <size> --timeout <seconds> --access-log
+pn add <domain> <host:port> --force-https | --no-force-https
 pn remove <domain>
 pn remove <domain> --run [--purge-cert]
 pn template list
@@ -144,6 +145,7 @@ pn add admin.example.com 127.0.0.1:3000 \
 - `--max-body-size` sets `client_max_body_size` (default `50m`), `--timeout` the proxy read/send timeout in seconds (default `300`).
 - `--access-log` writes `logs/<domain>.access.log` (read it with `pn logs <domain>`).
 - `--hsts-subdomains` adds `includeSubDomains` to HSTS. It is off by default because on an apex domain it forces HTTPS for every sibling subdomain.
+- `--force-https` / `--no-force-https` fix the HTTP→HTTPS redirect for this site. Without either flag the site follows `FORCE_HTTPS` from `.env`. Use `--no-force-https` for the one site that must keep answering plain HTTP (webhooks, legacy clients) without turning the redirect off for the whole project.
 
 ### Editing templates
 
@@ -192,6 +194,8 @@ How changes are applied:
 
 - `pn add ... --run`, `pn remove ... --run`, `pn template edit ... --run` re-render the templates **inside the running container**, run `nginx -t`, and reload. The container is not restarted, so connections are not dropped, and if the test fails the previous configuration is restored and the command fails. If the proxy is not running they start it instead.
 - `pn up`, `pn restart` and `pn network ... --run` recreate the container. When the proxy is already running, the new configuration is first tested in a throwaway container; if it is invalid the running proxy is left untouched.
+
+Images are pinned, so a plain `pn up` keeps using what is already built. To pick up new patch releases of the pinned tags (nginx security fixes, certbot), run `pn up --pull` (or `pn restart --pull`): it rebuilds with `--pull`, pulls the certbot image, validates the configuration against the new nginx, then recreates the container. To move to another minor version, change `NGINX_IMAGE` in `.env` and run `pn up --pull`.
 
 `pn status` lists sites (with upstream and aliases), networks and certificates (expiry date, days left, and `self-signed` / `staging` / `expiring soon` flags). `pn status --json` prints the same data for scripts and agents.
 

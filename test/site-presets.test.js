@@ -279,3 +279,96 @@ test('pn logs explains missing logs and validates input', () => {
   assert.throws(() => logsProject(undefined, { cwd, lines: 0 }), /Invalid --lines/);
   assert.throws(() => logsProject('../etc/passwd', { cwd }), /Invalid domain/);
 });
+
+test('per-site HTTPS redirect: follows FORCE_HTTPS by default, or is fixed on or off', () => {
+  const cwd = makeProject();
+  addSite('env.example.com', '127.0.0.1:3000', {}, cwd);
+  addSite('on.example.com', '127.0.0.1:3000', { forceHttps: true }, cwd);
+  addSite('off.example.com', '127.0.0.1:3000', { forceHttps: false }, cwd);
+
+  assert.match(readSite(cwd, 'env.example.com'), /set \$force_https "\$\{FORCE_HTTPS\}";/);
+  assert.match(readSite(cwd, 'on.example.com'), /set \$force_https "true";/);
+  assert.match(readSite(cwd, 'off.example.com'), /set \$force_https "false";/);
+
+  const list = templateList(cwd);
+  assert.match(list, /^off\.example\.com .*https redirect: off/m);
+  assert.match(list, /^on\.example\.com .*https redirect: on/m);
+  assert.doesNotMatch(list, /^env\.example\.com .*https redirect/m);
+
+  const json = JSON.parse(statusProject(cwd, () => {}, { json: true }));
+  const modes = Object.fromEntries(json.sites.map((site) => [site.domain, site.httpsRedirect]));
+  assert.deepEqual(modes, { 'env.example.com': 'env', 'off.example.com': 'off', 'on.example.com': 'on' });
+});
+
+test('--force-https needs an SSL site', () => {
+  assert.throws(
+    () => addSite('plain.example.com', '127.0.0.1:3000', { ssl: false, forceHttps: true }, makeProject()),
+    /need SSL/
+  );
+  const cwd = makeProject();
+  addSite('plain.example.com', '127.0.0.1:3000', { ssl: false }, cwd);
+  assert.equal(JSON.parse(statusProject(cwd, () => {}, { json: true })).sites[0].httpsRedirect, null);
+});
+
+test('pn up --pull and pn restart --pull refresh images before validating and recreating', () => {
+  const cwd = makeProject();
+  const { upProject, restartProject } = require('../lib/commands');
+
+  for (const run of [upProject, restartProject]) {
+    const calls = [];
+    run(cwd, (args) => calls.push(args), { pull: true });
+
+    assert.deepEqual(calls.slice(0, 2), [['build', '--pull', 'proxy-nginx'], ['pull', 'certbot']]);
+    assert.deepEqual(calls[2], ['exec', '-T', 'proxy-nginx', 'true']);
+    assert.equal(calls[3][0], 'run');
+    assert.deepEqual(calls[4], ['up', '-d', '--build', '--force-recreate', 'proxy-nginx']);
+  }
+});
+
+test('pn up --pull stops before touching the proxy when a pull fails', () => {
+  const cwd = makeProject();
+  const { upProject } = require('../lib/commands');
+  const calls = [];
+
+  assert.throws(
+    () =>
+      upProject(cwd, (args) => {
+        calls.push(args);
+        if (args[0] === 'pull') {
+          throw new Error('network unreachable');
+        }
+      }, { pull: true }),
+    /network unreachable/
+  );
+
+  assert.deepEqual(calls.map((args) => args[0]), ['build', 'pull']);
+});
+
+test('pn up without --pull does not pull', () => {
+  const cwd = makeProject();
+  const { upProject } = require('../lib/commands');
+  const calls = [];
+
+  upProject(cwd, (args) => calls.push(args));
+
+  assert.ok(!calls.some((args) => args[0] === 'build' || args[0] === 'pull'));
+});
+
+test('pn status reports the nginx version of the running proxy', () => {
+  const cwd = makeProject();
+  const runner = (args) => (args.includes('nginx -v 2>&1') ? 'nginx version: nginx/1.30.2\n' : undefined);
+
+  assert.match(statusProject(cwd, runner), /^Proxy: running, nginx 1\.30\.2$/m);
+  assert.equal(JSON.parse(statusProject(cwd, runner, { json: true })).proxy.nginxVersion, '1.30.2');
+
+  const stopped = (args) => {
+    if (args[0] === 'exec') {
+      throw new Error('not running');
+    }
+  };
+  assert.match(statusProject(cwd, stopped), /^Proxy: not running$/m);
+  assert.deepEqual(JSON.parse(statusProject(cwd, stopped, { json: true })).proxy, {
+    running: false,
+    nginxVersion: null,
+  });
+});

@@ -107,7 +107,8 @@ test('pn status shows expiry and upstreams, and supports --json', () => {
     text,
     /Certificates:\n  - app\.example\.com \(expires 2126-09-09, -?\d+ days left\) \[self-signed\]/
   );
-  assert.deepEqual(calls, [['ps']]);
+  assert.deepEqual(calls[0], ['ps']);
+  assert.ok(calls.slice(1).every((args) => args[0] === 'exec'));
 
   calls.length = 0;
   const json = JSON.parse(statusProject(cwd, runner, { json: true }));

@@ -98,6 +98,20 @@ pn remove app.example.com --run
 pn remove app.example.com --run --purge-cert   # also delete its certificate
 ```
 
+**Update nginx / certbot images** (images are pinned; patch releases are not automatic)
+
+```bash
+pn up --pull         # rebuild with --pull, pull certbot, validate, recreate
+```
+
+To change the minor version, set `NGINX_IMAGE` in `.env` first. `pn status` shows the running nginx version.
+
+**One site must stay on plain HTTP** (webhook, legacy client) while others redirect:
+
+```bash
+pn add hooks.example.com 127.0.0.1:9000 --no-force-https --run
+```
+
 **Update a project made by an older pn**
 
 ```bash

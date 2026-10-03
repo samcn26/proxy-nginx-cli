@@ -5,6 +5,10 @@
 ### Added
 - `pn template list|edit`, `pn logs`, `pn migrate`, `pn rollback`, `pn status --json`.
 - `pn migrate --yes --run` rolls back automatically when the restart fails.
+- `pn up --pull` / `pn restart --pull` to pick up patch releases of the pinned images.
+- `pn status` shows the running nginx version.
+- `pn add --force-https` / `--no-force-https`: per-site HTTP→HTTPS redirect.
+- Commands now explain when the directory is not a pn project and point at the real one.
 - Site options: `--alias`, `--www`, `--redirect-aliases`, `--template static|spa|redirect`,
   `--allow`, `--max-body-size`, `--timeout`, `--access-log`, `--hsts-subdomains`.
 - `pn cert --email`, `--staging`, `--force-renew`; `pn remove --run`, `--purge-cert`; `pn reset --yes`.

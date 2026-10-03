@@ -32,6 +32,5 @@ Windows shims), CI (`.github/workflows/ci.yml`), pinned images.
 
 - [ ] Basic auth per site (`--basic-auth`), needs password hashing (apr1/bcrypt) without extra system tools.
 - [ ] `pn add --template` presets for common stacks (PHP-FPM, WebSocket-only, gRPC).
-- [ ] Per-site `FORCE_HTTPS` (today it is one project-wide `.env` switch).
 - [ ] Wildcard certificates (DNS-01) for aliases that are not individually routable.
 - [ ] `--json` for `template list`, `migrate`, and `cert` results.
