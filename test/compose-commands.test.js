@@ -19,6 +19,17 @@ const {
   upgradeCli,
 } = require('../lib/commands');
 
+const PROBE = ['exec', '-T', 'proxy-nginx', 'true'];
+const VALIDATE = ['run', '--rm', '-T', '--no-deps', 'proxy-nginx', 'nginx', '-t'];
+const UP = ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'];
+
+function recordCalls(cwd, calls) {
+  return (args, options) => {
+    assert.equal(options.cwd, cwd);
+    calls.push(args);
+  };
+}
+
 function makeComposeProject() {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-compose-'));
   fs.writeFileSync(path.join(cwd, 'docker-compose.yml'), 'services: {}\n');
@@ -52,23 +63,46 @@ function makeProxyProject() {
   return cwd;
 }
 
-test('pn up starts proxy nginx with docker compose', () => {
+test('pn up validates the new config, then recreates proxy nginx', () => {
   const cwd = makeComposeProject();
   const calls = [];
-  const runner = (args, options) => {
-    calls.push({ args, cwd: options.cwd });
-    return { status: 0 };
-  };
 
-  const output = upProject(cwd, runner);
+  const output = upProject(cwd, recordCalls(cwd, calls));
 
   assert.equal(output, 'Started proxy nginx.');
-  assert.deepEqual(calls, [
-    {
-      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
-      cwd,
-    },
-  ]);
+  assert.deepEqual(calls, [PROBE, VALIDATE, UP]);
+});
+
+test('pn up skips validation when the proxy is not running', () => {
+  const cwd = makeComposeProject();
+  const calls = [];
+
+  upProject(cwd, (args, options) => {
+    calls.push(args);
+    if (args[0] === 'exec') {
+      throw new Error('service "proxy-nginx" is not running');
+    }
+  });
+
+  assert.deepEqual(calls, [PROBE, UP]);
+});
+
+test('pn up does not touch the running proxy when the new config is invalid', () => {
+  const cwd = makeComposeProject();
+  const calls = [];
+
+  assert.throws(
+    () =>
+      upProject(cwd, (args) => {
+        calls.push(args);
+        if (args[0] === 'run') {
+          throw new Error('nginx: [emerg] unknown directive');
+        }
+      }),
+    /nginx config test failed; the running proxy was not touched/
+  );
+
+  assert.deepEqual(calls, [PROBE, VALIDATE]);
 });
 
 test('pn stop stops proxy project containers without deleting them', () => {
@@ -99,17 +133,10 @@ test('pn restart recreates proxy nginx so templates are regenerated', () => {
   const cwd = makeComposeProject();
   const calls = [];
 
-  const output = restartProject(cwd, (args, options) => {
-    calls.push({ args, cwd: options.cwd });
-  });
+  const output = restartProject(cwd, recordCalls(cwd, calls));
 
   assert.equal(output, 'Restarted proxy nginx.');
-  assert.deepEqual(calls, [
-    {
-      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
-      cwd,
-    },
-  ]);
+  assert.deepEqual(calls, [PROBE, VALIDATE, UP]);
 });
 
 test('pn status shows compose status plus project summary', () => {
@@ -209,28 +236,43 @@ test('pn cert issues a certificate and reloads nginx', () => {
   ]);
 });
 
-test('pn add --run applies the site immediately', () => {
+test('pn add --run applies the site without restarting the proxy', () => {
   const cwd = makeComposeProject();
   fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
   const calls = [];
-  const runner = (args, options) => {
-    calls.push({ args, cwd: options.cwd });
-    return { status: 0 };
-  };
 
   const output = addSite('test.example.cn', '127.0.0.1:3000', {
     run: true,
     ssl: false,
-    runCompose: runner,
+    runCompose: recordCalls(cwd, calls),
+  }, cwd);
+
+  assert.match(output, /Applied site changes and reloaded proxy nginx without restarting/);
+  assert.deepEqual(calls[0], PROBE);
+  assert.deepEqual(calls[1].slice(0, 5), ['exec', '-T', 'proxy-nginx', 'sh', '-c']);
+  assert.match(calls[1][5], /nginx -t/);
+  assert.match(calls[1][5], /nginx -s reload/);
+  assert.equal(calls.length, 2);
+});
+
+test('pn add --run starts the proxy when it is not running', () => {
+  const cwd = makeComposeProject();
+  fs.mkdirSync(path.join(cwd, 'nginx', 'templates'), { recursive: true });
+  const calls = [];
+
+  const output = addSite('test.example.cn', '127.0.0.1:3000', {
+    run: true,
+    ssl: false,
+    runCompose: (args) => {
+      calls.push(args);
+      if (args[0] === 'exec') {
+        throw new Error('not running');
+      }
+    },
   }, cwd);
 
   assert.match(output, /Started proxy nginx/);
-  assert.deepEqual(calls, [
-    {
-      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
-      cwd,
-    },
-  ]);
+  assert.deepEqual(calls, [PROBE, UP]);
 });
 
 test('pn add keeps existing site templates unless forced', () => {
@@ -278,8 +320,10 @@ test('pn add --run --cert applies the site and issues a certificate', () => {
   }, cwd);
 
   assert.match(output, /Issued certificate for test.example.cn/);
-  assert.deepEqual(calls.map((call) => call.args), [
-    ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
+  const applyCall = calls.map((call) => call.args)[1];
+  assert.equal(applyCall[0], 'exec');
+  assert.deepEqual(calls.map((call) => call.args).filter((args, index) => index !== 1), [
+    PROBE,
     [
       'run',
       '--rm',
@@ -379,12 +423,7 @@ test('pn network add --run applies network changes immediately', () => {
   });
 
   assert.match(output, /Started proxy nginx/);
-  assert.deepEqual(calls, [
-    {
-      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
-      cwd,
-    },
-  ]);
+  assert.deepEqual(calls.map((call) => call.args), [PROBE, VALIDATE, UP]);
 });
 
 test('pn network remove detaches a proxy network', () => {
@@ -413,12 +452,7 @@ test('pn network remove --run applies network removal immediately', () => {
   });
 
   assert.match(output, /Started proxy nginx/);
-  assert.deepEqual(calls, [
-    {
-      args: ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'],
-      cwd,
-    },
-  ]);
+  assert.deepEqual(calls.map((call) => call.args), [PROBE, VALIDATE, UP]);
 });
 
 test('pn cert backs up self-signed live certs before requesting a certificate', () => {

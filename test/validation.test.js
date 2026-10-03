@@ -94,7 +94,7 @@ test('pn add --cert cannot be combined with --no-ssl', () => {
   );
 });
 
-test('pn remove --run applies the removal immediately', () => {
+test('pn remove --run applies the removal without restarting the proxy', () => {
   const cwd = makeProject();
   addSite('app.example.com', '127.0.0.1:3000', {}, cwd);
   const calls = [];
@@ -104,8 +104,9 @@ test('pn remove --run applies the removal immediately', () => {
     runCompose: (args) => calls.push(args),
   });
 
-  assert.match(output, /Removed app\.example\.com\.\nStarted proxy nginx\./);
-  assert.deepEqual(calls, [['up', '-d', '--build', '--force-recreate', 'proxy-nginx']]);
+  assert.match(output, /Removed app\.example\.com\.\nApplied site changes/);
+  assert.deepEqual(calls[0], ['exec', '-T', 'proxy-nginx', 'true']);
+  assert.equal(calls[1][3], 'sh');
 });
 
 test('pn network add rejects invalid network names', () => {
