@@ -126,7 +126,7 @@ test('pn cert passes email and staging options to certbot', () => {
     staging: true,
   });
 
-  const certbotArgs = calls[0];
+  const certbotArgs = calls.find((args) => args[0] === 'run');
   assert.ok(certbotArgs.includes('--staging'));
   assert.deepEqual(certbotArgs.slice(certbotArgs.indexOf('--email'), certbotArgs.indexOf('--email') + 2), [
     '--email',

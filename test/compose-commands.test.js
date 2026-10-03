@@ -22,6 +22,8 @@ const {
 const PROBE = ['exec', '-T', 'proxy-nginx', 'true'];
 const VALIDATE = ['run', '--rm', '-T', '--no-deps', 'proxy-nginx', 'nginx', '-t'];
 const UP = ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'];
+const CERTBOT_PROBE = ['exec', '-T', 'certbot', 'true'];
+const CERTBOT_STOP = ['stop', 'certbot'];
 
 function recordCalls(cwd, calls) {
   return (args, options) => {
@@ -198,6 +200,8 @@ test('pn cert issues a certificate and reloads nginx', () => {
 
   assert.equal(output, 'Issued certificate for test.example.cn, reloaded proxy nginx, and started certificate renewal.');
   assert.deepEqual(calls, [
+    { args: CERTBOT_PROBE, cwd },
+    { args: CERTBOT_STOP, cwd },
     {
       args: [
         'run',
@@ -324,6 +328,8 @@ test('pn add --run --cert applies the site and issues a certificate', () => {
   assert.equal(applyCall[0], 'exec');
   assert.deepEqual(calls.map((call) => call.args).filter((args, index) => index !== 1), [
     PROBE,
+    CERTBOT_PROBE,
+    CERTBOT_STOP,
     [
       'run',
       '--rm',

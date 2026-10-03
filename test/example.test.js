@@ -149,6 +149,16 @@ test('pn example <domain> --run --cert starts, issues cert, and reloads', () => 
     },
     {
       type: 'compose',
+      args: ['exec', '-T', 'certbot', 'true'],
+      cwd: path.join(cwd, 'example', 'proxy'),
+    },
+    {
+      type: 'compose',
+      args: ['stop', 'certbot'],
+      cwd: path.join(cwd, 'example', 'proxy'),
+    },
+    {
+      type: 'compose',
       args: [
         'run',
         '--rm',
