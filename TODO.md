@@ -7,13 +7,13 @@ Public roadmap for `proxy-nginx-cli`.
 - [ ] Review package metadata before publishing:
   - [ ] `name`
   - [ ] `version`
-  - [ ] `description`
-  - [ ] `keywords`
-  - [ ] `author`
-  - [ ] `license`
-  - [ ] `repository`
-  - [ ] `bugs`
-  - [ ] `homepage`
+  - [x] `description`
+  - [x] `keywords`
+  - [x] `author`
+  - [x] `license`
+  - [x] `repository`
+  - [x] `bugs`
+  - [x] `homepage`
 - [ ] Decide whether the public binary name `pn` is acceptable long term.
 - [ ] Run release checks:
   - [ ] `npm test`

@@ -37,6 +37,7 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn add ... --run`: apply immediately by running the equivalent of `pn up`.
 - `pn add ... --cert`: implies apply, request cert, reload nginx, and start certbot renewal service.
 - `pn remove <domain>`: remove a site template.
+- `pn remove <domain> --run`: remove a site template and apply with the equivalent of `pn up`.
 - `pn up`: build/start/recreate `proxy-nginx`.
 - `pn stop`: stop compose containers without deleting them.
 - `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs.
@@ -44,7 +45,9 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn status`: show compose status plus sites, attached networks, and cert renewal configs.
 - `pn upgrade`: upgrade the CLI itself, not a proxy project. Git-linked installs pull and npm install; npm installs run global npm install latest.
 - `pn reload`: run `nginx -t` then `nginx -s reload` in the running proxy container.
-- `pn cert <domain>`: request Let's Encrypt cert with certbot webroot, reload nginx, then start certbot renewal service.
+- `pn cert <domain>`: request Let's Encrypt cert with certbot webroot (`--cert-name <domain>`), reload nginx, then start certbot renewal service.
+- `pn cert ... --email <email>` / `--staging`: account email and Let's Encrypt staging. Also accepted by `pn add --cert` and `pn example --cert`.
+- Domains, upstream hosts/ports, and network names are validated; `--cert` with `--no-ssl` is rejected.
 - `pn example`: create an example project.
 - `pn example --run`: run local example.
 - `pn example <domain> --run`: run online HTTP example.
@@ -77,7 +80,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 39 passing tests.
+Expected current test count: 50 passing tests.
 
 ## Server Notes
 

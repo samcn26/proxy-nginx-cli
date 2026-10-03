@@ -22,6 +22,7 @@ pn add <domain> <host:port> --run
 pn add <domain> <host:port> --run --cert
 pn add <domain> <host:port> --force
 pn remove <domain>
+pn remove <domain> --run
 pn network add <network>
 pn network add <network> --run
 pn network remove <network> --run
@@ -33,6 +34,8 @@ pn status
 pn upgrade
 pn reload
 pn cert <domain>
+pn cert <domain> --email <email>
+pn cert <domain> --staging
 pn example
 pn example --run
 pn example <domain> --run
@@ -92,6 +95,36 @@ Overwrite a site template explicitly:
 pn add app.example.com 127.0.0.1:3000 --force
 ```
 
+Remove a site and apply immediately:
+
+```bash
+pn remove app.example.com --run
+```
+
+Domains, upstream hosts, ports, and network names are validated before anything is written. Target URLs must contain only protocol, host, and port (no path).
+
+## Certificates
+
+```bash
+pn cert app.example.com
+pn cert app.example.com --email ops@example.com
+pn cert app.example.com --staging
+```
+
+- `--email` registers a Let's Encrypt account email instead of `--register-unsafely-without-email`.
+- `--staging` uses the Let's Encrypt staging environment, which is useful for testing without hitting production rate limits. Staging certificates are not trusted by browsers.
+- The same options work with `pn add ... --cert` and `pn example <domain> --run --cert`.
+- `--cert` cannot be combined with `--no-ssl`. HTTP-only sites still serve `/.well-known/acme-challenge/`, so you can later switch them to SSL with `pn add <domain> <target> --force` and run `pn cert`.
+
+The `certbot` service renews certificates every 12 hours. Projects created by `pn init` also include `nginx/docker-entrypoint.d/50-reload-renewed-certs.sh`, which reloads Nginx every 12 hours (`CERT_RELOAD_INTERVAL`) so renewed certificates are actually served.
+
+Existing projects created by older versions can pick up the reload hook without touching their templates:
+
+```bash
+pn init      # only writes missing files
+pn restart   # rebuilds the image so the new hook is included
+```
+
 ## Operate Proxy
 
 ```bash
@@ -118,20 +151,20 @@ pn upgrade
 Attach the proxy container to one or more existing external Docker networks:
 
 ```bash
-pn network add jestar
+pn network add app-net
 pn network add internal-api
 ```
 
 This updates `docker-compose.yml` only. Apply the change immediately by recreating `proxy-nginx`:
 
 ```bash
-pn network add jestar --run
+pn network add app-net --run
 ```
 
 Remove a network attachment:
 
 ```bash
-pn network remove jestar --run
+pn network remove app-net --run
 ```
 
 Network commands do not create or delete Docker networks; create the external network with Docker first if it does not already exist.
@@ -247,6 +280,6 @@ example/
 
 ## Notes
 
-- `pn up` and `pn reload` use `docker-compose`.
+- Compose commands use `docker-compose` when it is a real Compose binary, otherwise `docker compose`.
 - `pn cert` uses the compose `certbot` service with HTTP-01 webroot validation.
 - Keep `FORCE_HTTPS=false` until the first certificate has been issued if you are manually editing `.env`.

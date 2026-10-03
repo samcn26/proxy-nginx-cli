@@ -1,7 +1,7 @@
 {
   "name": "proxy-nginx-cli",
   "version": "0.0.1",
-  "description": "CLI for managing nginx proxy deployments.",
+  "description": "CLI for operating a Docker-based Nginx reverse proxy with Let’s Encrypt certificates.",
   "main": "lib/cli.js",
   "bin": {
     "pn": "./bin/pn"
@@ -15,12 +15,26 @@
   },
   "keywords": [
     "nginx",
+    "reverse-proxy",
     "proxy",
-    "cli",
-    "ssl"
+    "docker",
+    "docker-compose",
+    "letsencrypt",
+    "certbot",
+    "ssl",
+    "https",
+    "cli"
   ],
-  "author": "",
+  "author": "samcn26",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samcn26/proxy-nginx-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/samcn26/proxy-nginx-cli/issues"
+  },
+  "homepage": "https://github.com/samcn26/proxy-nginx-cli#readme",
   "dependencies": {
     "commander": "^12.1.0"
   },

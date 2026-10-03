@@ -159,6 +159,8 @@ test('pn example <domain> --run --cert starts, issues cert, and reloads', () => 
         '--webroot',
         '-w',
         '/var/www/certbot',
+        '--cert-name',
+        'test.example.cn',
         '-d',
         'test.example.cn',
         '--agree-tos',
