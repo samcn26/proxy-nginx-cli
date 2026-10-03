@@ -31,6 +31,7 @@ pn template list
 pn template edit <domain> [--run]
 pn logs [domain] [-n <lines>] [-f] [--error]
 pn migrate [--yes] [--run]
+pn rollback [backup] [--yes] [--run] [--force] [--list]
 pn network add <network>
 pn network add <network> --run
 pn network remove <network> --run
@@ -217,6 +218,22 @@ pn restart
 ```
 
 `pn migrate` updates the Dockerfile, `nginx/nginx.conf`, entrypoint hooks, base templates, the `docker-compose.yml` (through a YAML parser, keeping your comments and extra settings) and adds image pins to `.env`. It never touches site templates. The project schema version is stored in `.pn.json`.
+
+Run it in the project directory (where `docker-compose.yml` is). Backups go to `<project>/.pn-backup/<timestamp>/`, together with a `manifest.json` of what changed and what was created.
+
+### Rolling back
+
+```bash
+pn rollback               # preview: which files would be restored or removed
+pn rollback --yes         # restore the previous files, remove files migrate created
+pn restart                # apply (or: pn rollback --yes --run)
+pn rollback --list        # all backups; pass a backup name to roll back an older one
+```
+
+- Site templates, certificates and logs are never touched.
+- A file you edited after the migration is kept, and reported; `--force` overwrites it.
+- `pn migrate --yes --run` rolls back by itself if the restart fails (invalid config, build or start failure) and restarts with the previous files, so the proxy is not left down.
+- A backup that was already rolled back is skipped by the next `pn rollback`.
 
 ## Docker Networks
 

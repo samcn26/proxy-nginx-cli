@@ -103,8 +103,11 @@ pn remove app.example.com --run --purge-cert   # also delete its certificate
 ```bash
 pn migrate            # preview only
 pn migrate --yes      # apply; backups go to .pn-backup/; site templates untouched
-pn restart
+pn restart            # or: pn migrate --yes --run (rolls back automatically if the restart fails)
 ```
+
+If something is wrong after migrating: `pn rollback` (preview), `pn rollback --yes`, `pn restart`.
+Edited-since-migrate files are kept unless `--force`.
 
 ## Recover from certbot failures
 

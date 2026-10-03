@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Added
-- `pn template list|edit`, `pn logs`, `pn migrate`, `pn status --json`.
+- `pn template list|edit`, `pn logs`, `pn migrate`, `pn rollback`, `pn status --json`.
+- `pn migrate --yes --run` rolls back automatically when the restart fails.
 - Site options: `--alias`, `--www`, `--redirect-aliases`, `--template static|spa|redirect`,
   `--allow`, `--max-body-size`, `--timeout`, `--access-log`, `--hsts-subdomains`.
 - `pn cert --email`, `--staging`, `--force-renew`; `pn remove --run`, `--purge-cert`; `pn reset --yes`.

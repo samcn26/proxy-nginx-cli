@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 
-const { addSite, initProject, migrateProject, networkAdd } = require('../lib/commands');
+const { addSite, initProject, migrateProject, networkAdd, rollbackProject } = require('../lib/commands');
 const { readProxyNetworks } = require('../lib/compose-file');
 
 const OLD_COMPOSE = `# my deployment
@@ -155,4 +155,173 @@ test('pn migrate --yes --run recreates the proxy after migrating', () => {
 test('pn migrate requires a project', () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-nginx-cli-migrate-'));
   assert.throws(() => migrateProject({ cwd }), /Run pn init first/);
+});
+
+const UP = ['up', '-d', '--build', '--force-recreate', 'proxy-nginx'];
+
+// Everything pn migrate may touch, so rollback can be compared byte for byte.
+const MIGRATED_PATHS = [
+  'Dockerfile',
+  'docker-compose.yml',
+  '.env',
+  'nginx/nginx.conf',
+  'nginx/docker-entrypoint.d/50-reload-renewed-certs.sh',
+  'nginx/docker-entrypoint.d/60-rotate-logs.sh',
+  'nginx/templates/00-connection-upgrade.conf.template',
+  'nginx/templates/00-unmatched-host.conf.template',
+  'nginx/templates/app.example.com.conf.template',
+  '.pn.json',
+];
+
+function snapshot(cwd) {
+  return Object.fromEntries(
+    MIGRATED_PATHS.map((file) => {
+      const target = path.join(cwd, file);
+      return [file, fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : null];
+    })
+  );
+}
+
+test('pn migrate --yes writes a manifest listing what it changed and created', () => {
+  const cwd = makeLegacyProject();
+
+  migrateProject({ cwd, yes: true, now: new Date('2026-10-03T08:09:10Z') });
+
+  const manifest = JSON.parse(read(cwd, '.pn-backup', '20261003080910', 'manifest.json'));
+  const byPath = Object.fromEntries(manifest.files.map((file) => [file.path, file.action]));
+  assert.equal(manifest.schemaVersionBefore, 1);
+  assert.equal(manifest.schemaVersionAfter, 2);
+  assert.equal(byPath.Dockerfile, 'update');
+  assert.equal(byPath['docker-compose.yml'], 'update');
+  assert.equal(byPath['nginx/docker-entrypoint.d/60-rotate-logs.sh'], 'create');
+  assert.equal(byPath['.pn.json'], 'create');
+  assert.ok(manifest.files.every((file) => /^[0-9a-f]{64}$/.test(file.sha256)));
+});
+
+test('pn rollback previews by default and --yes restores the project byte for byte', () => {
+  const cwd = makeLegacyProject();
+  const before = snapshot(cwd);
+  migrateProject({ cwd, yes: true });
+  const migrated = snapshot(cwd);
+  assert.notDeepEqual(migrated, before);
+
+  const preview = rollbackProject({ cwd });
+  assert.match(preview, /Rollback of backup \d+:/);
+  assert.match(preview, /~ Dockerfile/);
+  assert.match(preview, /- nginx\/docker-entrypoint\.d\/60-rotate-logs\.sh {2}\(created by the migration/);
+  assert.deepEqual(snapshot(cwd), migrated);
+
+  const output = rollbackProject({ cwd, yes: true });
+
+  assert.match(output, /Rolled back backup \d+: \d+ file\(s\) restored, \d+ removed\./);
+  assert.match(output, /pn restart/);
+  assert.deepEqual(snapshot(cwd), before);
+  assert.match(read(cwd, 'nginx', 'templates', 'app.example.com.conf.template'), /proxy_pass/);
+});
+
+test('pn rollback keeps files edited after the migration unless --force is given', () => {
+  const cwd = makeLegacyProject();
+  migrateProject({ cwd, yes: true });
+  fs.appendFileSync(path.join(cwd, 'nginx', 'nginx.conf'), '# edited after migrate\n');
+
+  const output = rollbackProject({ cwd, yes: true });
+
+  assert.match(output, /1 file\(s\) were modified after the migration and kept: nginx\/nginx\.conf/);
+  assert.match(read(cwd, 'nginx', 'nginx.conf'), /# edited after migrate/);
+  assert.match(read(cwd, 'Dockerfile'), /^FROM nginx:latest/);
+
+  // The backup is already rolled back, so name it to retry with --force.
+  const [name] = fs.readdirSync(path.join(cwd, '.pn-backup'));
+  assert.match(rollbackProject({ cwd, backup: name, yes: true, force: true }), /restored/);
+  assert.equal(read(cwd, 'nginx', 'nginx.conf'), 'user nginx;\n# old\n');
+});
+
+test('pn rollback --list, backup names, and already rolled back backups', () => {
+  const cwd = makeLegacyProject();
+  assert.match(rollbackProject({ cwd, list: true }), /No backups/);
+  assert.match(rollbackProject({ cwd }), /No backups to roll back/);
+
+  migrateProject({ cwd, yes: true, now: new Date('2026-10-03T08:00:00Z') });
+  assert.match(rollbackProject({ cwd, list: true }), /20261003080000 {2}2026-10-03T08:00:00\.000Z {2}\d+ file\(s\)\n?$/);
+  assert.throws(() => rollbackProject({ cwd, backup: 'nope' }), /No backup named nope/);
+
+  rollbackProject({ cwd, yes: true });
+  assert.match(rollbackProject({ cwd, list: true }), /rolled back 20\d\d-/);
+  assert.match(rollbackProject({ cwd }), /No backups to roll back/);
+});
+
+test('pn rollback undoes the newest migration first', () => {
+  const cwd = makeLegacyProject();
+  migrateProject({ cwd, yes: true, now: new Date('2026-10-03T08:00:00Z') });
+  // Make the project need migrating again, then migrate a second time.
+  fs.writeFileSync(path.join(cwd, 'Dockerfile'), 'FROM nginx:latest\n');
+  migrateProject({ cwd, yes: true, now: new Date('2026-10-03T09:00:00Z') });
+
+  const output = rollbackProject({ cwd, yes: true });
+
+  assert.match(output, /Rolled back backup 20261003090000/);
+  assert.equal(read(cwd, 'Dockerfile'), 'FROM nginx:latest\n');
+});
+
+test('pn rollback --yes --run recreates the proxy', () => {
+  const cwd = makeLegacyProject();
+  migrateProject({ cwd, yes: true });
+  const calls = [];
+
+  const output = rollbackProject({ cwd, yes: true, run: true, runCompose: (args) => calls.push(args) });
+
+  assert.match(output, /Started proxy nginx\./);
+  assert.deepEqual(calls[calls.length - 1], UP);
+});
+
+test('pn migrate --yes --run rolls back automatically when the restart fails', () => {
+  const cwd = makeLegacyProject();
+  const before = snapshot(cwd);
+  const calls = [];
+  let failed = false;
+
+  assert.throws(
+    () =>
+      migrateProject({
+        cwd,
+        yes: true,
+        run: true,
+        runCompose: (args) => {
+          calls.push(args);
+          if (args[0] === 'exec') {
+            throw new Error('not running');
+          }
+          if (args[0] === 'up' && !failed) {
+            failed = true;
+            throw new Error('nginx exited with code 1');
+          }
+        },
+      }),
+    (error) => {
+      assert.match(error.message, /Restart after migrating failed: nginx exited with code 1/);
+      assert.match(error.message, /Rolled back backup \d+/);
+      assert.match(error.message, /Started proxy nginx\./);
+      return true;
+    }
+  );
+
+  assert.deepEqual(snapshot(cwd), before);
+  assert.equal(calls.filter((args) => args[0] === 'up').length, 2);
+});
+
+test('pn migrate --yes --run reports when the restart after rollback also fails', () => {
+  const cwd = makeLegacyProject();
+
+  assert.throws(
+    () =>
+      migrateProject({
+        cwd,
+        yes: true,
+        run: true,
+        runCompose: (args) => {
+          throw new Error(args[0] === 'up' ? 'docker daemon unavailable' : 'not running');
+        },
+      }),
+    /Restarting with the previous files also failed: docker daemon unavailable/
+  );
 });

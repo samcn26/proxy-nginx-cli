@@ -46,7 +46,7 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn add ... --cert`: implies apply, request cert, reload nginx, and start certbot renewal service.
 - `pn add ... --alias/--www/--redirect-aliases`: extra names; certs cover all names in the site template.
 - `pn add ... --template static|spa|redirect`, `--allow`, `--max-body-size`, `--timeout`, `--access-log`, `--hsts-subdomains`.
-- `pn template list|edit <domain> [--run]`, `pn logs [domain] [-f] [--error]`, `pn migrate [--yes] [--run]`.
+- `pn template list|edit <domain> [--run]`, `pn logs [domain] [-f] [--error]`, `pn migrate [--yes] [--run]`, `pn rollback [backup] [--yes] [--run] [--force] [--list]`.
 - `pn remove <domain>`: remove a site template.
 - `pn remove <domain> --run [--purge-cert]`: remove a site template, apply like `pn add --run`, optionally delete its certificate.
 - `pn up`: build/start/recreate `proxy-nginx`; tests the new config in a throwaway container first when the proxy is running.
@@ -81,6 +81,7 @@ up -d --build --force-recreate proxy-nginx
 - `pn add/remove/template edit --run` use `exec -T proxy-nginx sh -c <lib/scripts/apply-sites.sh>` instead (no restart).
 - Images are pinned (`NGINX_IMAGE`, `CERTBOT_IMAGE` in `.env`); update the defaults in `lib/project-files.js` deliberately.
 - Changing a generated base file means bumping `PROJECT_SCHEMA_VERSION` in `lib/project-files.js` so `pn migrate` can carry it to existing projects.
+- `pn migrate --yes` writes backups plus `manifest.json` to `<project>/.pn-backup/<timestamp>/`; `pn rollback` relies on the manifest (file list, created vs updated, sha256 of what was written).
 
 ## Testing
 
@@ -95,7 +96,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 106 passing tests.
+Expected current test count: 114 passing tests.
 
 Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 
