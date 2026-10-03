@@ -5,6 +5,7 @@
 ### Added
 - `pn template list|edit`, `pn logs`, `pn migrate`, `pn rollback`, `pn status --json`.
 - `pn migrate --yes --run` rolls back automatically when the restart fails.
+- `pn up` / `pn restart` / `pn doctor` explain when another pn project already owns the `proxy-nginx` container (one proxy per server) instead of failing with Docker's name conflict.
 - `pn stop` / `pn down` only act on pn's own services when `docker-compose.yml` also defines services of your own (a database, an app); tests show `pn migrate` and `pn network` keep such services untouched.
 - `pn doctor [domain]`: project and certificate health, DNS/CAA/HTTP/IPv6/HTTPS checks, `--ip`, `--json`.
 - `pn cert` runs DNS/CAA preflight checks first (`--skip-checks` to bypass).

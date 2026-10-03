@@ -14,7 +14,7 @@
 - [环境要求与安装](#环境要求与安装)
 - [快速开始](#快速开始)
 - [命令参考](#命令参考)
-- [使用指南](#使用指南)：[站点](#站点) · [证书](#证书) · [基础认证](#基础认证) · [变更如何生效](#变更如何生效) · [Docker 网络](#docker-网络) · [日志](#日志) · [升级与回滚](#升级与回滚) · [与其他服务共存及接入已有环境](#与其他服务共存及接入已有环境) · [示例](#示例)
+- [使用指南](#使用指南)：[站点](#站点) · [证书](#证书) · [基础认证](#基础认证) · [变更如何生效](#变更如何生效) · [Docker 网络](#docker-网络) · [日志](#日志) · [升级与回滚](#升级与回滚) · [一台服务器上的多个项目](#一台服务器上的多个项目) · [与其他服务共存及接入已有环境](#与其他服务共存及接入已有环境) · [示例](#示例)
 - [项目结构与配置](#项目结构与配置)
 - [故障排查与常见问题](#故障排查与常见问题)
 - [Agent 技能包](#agent-技能包) · [开发](#开发)
@@ -217,7 +217,7 @@ pn cert <domain> [--email <email>] [--staging] [--force-renew] [--skip-checks]
 pn doctor [domain] [--ip <address>] [--json]
 ```
 
-项目检查：Docker Compose 可用；项目文件是否最新（有没有待执行的 `pn migrate`）；代理容器是否在运行（及 nginx 版本）；磁盘上的模板能否通过 `nginx -t`；代理停止时 80/443 端口是否空闲；证书是否有效、是否快到期、是否自签名或测试证书、续期服务是否在运行。
+项目检查：Docker Compose 可用；没有被别的 pn 项目占用 `proxy-nginx` 容器；项目文件是否最新（有没有待执行的 `pn migrate`）；代理容器是否在运行（及 nginx 版本）；磁盘上的模板能否通过 `nginx -t`；代理停止时 80/443 端口是否空闲；证书是否有效、是否快到期、是否自签名或测试证书、续期服务是否在运行。
 
 给定域名（及其每个别名）时：站点模板是否存在；是否有 DNS A/AAAA 记录；解析的地址是否是这台服务器；有没有 CAA 记录禁止 Let's Encrypt；`/.well-known/acme-challenge/` 下的测试文件能否通过 HTTP 从本代理读到（有 AAAA 记录时还会测 IPv6，因为 Let's Encrypt 优先使用 IPv6）；443 端口 HTTPS 是否能返回证书。
 
@@ -449,6 +449,32 @@ pn rollback --yes && pn restart
 
 用 `pn status` 查看运行中的 Nginx 版本。镜像版本固定在 `.env`（`NGINX_IMAGE`、`CERTBOT_IMAGE`）；普通的 `pn up` 沿用已构建的镜像。要获取固定标签下的新补丁版本，用 `pn up --pull`；要升级到别的次版本，先修改 `NGINX_IMAGE`。
 
+### 一台服务器上的多个项目
+
+一台服务器只有一对 80/443 端口，所以只能运行**一个** pn 代理，由这个代理服务你**所有**的项目。不要在每个项目里都执行 `pn init`：生成的容器固定叫 `proxy-nginx` 和 `proxy-certbot`，第二个代理无法与第一个同时启动。
+
+```text
+/srv/proxy/        pn 项目（在这里 pn init）：唯一的代理，所有站点都在这里添加
+/srv/project-a/    项目 A 自己的 docker-compose.yml（应用、数据库等）
+/srv/project-b/    项目 B 自己的 docker-compose.yml
+```
+
+把每个项目的域名都添加到这一个代理上：
+
+```bash
+cd /srv/proxy
+pn add a.example.com 127.0.0.1:3001 --run --cert     # 项目 A
+pn add b.example.com 127.0.0.1:3002 --run --cert     # 项目 B
+pn status                                            # 所有站点集中查看
+```
+
+代理如何访问应用：
+
+1. **发布主机端口（最简单）。** 在应用自己的 compose 文件里发布端口（`ports: ["127.0.0.1:3001:3000"]`），用 `127.0.0.1:3001` 作为目标（会映射成 `host.docker.internal`）。每个项目用自己的主机端口。
+2. **共享 Docker 网络。** `docker network create shared`，让应用的容器加入它（`networks: { shared: { external: true } }`），执行 `pn network add shared --run`，然后用容器名：`pn add a.example.com http://a-web:3000 --run`。容器名在该网络里必须唯一。
+
+如果在第二个 pn 项目里执行 `pn up`，而第一个项目的代理已经存在，`pn` 会停下并告诉你代理属于哪个项目；`pn doctor` 也会报告。把代理放在一个中立的目录（而不是某个项目里面），这样重新部署或删除某个项目都不会影响代理。迁移方法：在旧目录执行 `pn down`，复制整个目录（`ssl/certs`、`.env`、`nginx/templates`、`nginx/auth`、`sites`），在新目录执行 `pn up`，再用 `pn doctor` 检查。同一台机器上跑两个代理，需要各自独立的公网 IP，并修改 compose 文件里的端口和容器名；`pn` 不负责管理这种情况。
+
 ### 与其他服务共存及接入已有环境
 
 **可以修改 `docker-compose.yml`，或者往里加自己的服务吗？** 可以。`pn` 只在两种情况下修改这个文件，并且始终通过 YAML 解析器，保留注释、顺序和所有它不管理的内容：
@@ -536,6 +562,7 @@ logs/                     Nginx 日志
 - **80/443 端口已被占用。** 被别的服务占用了。代理停止时 `pn doctor` 会指出这一点；用 `ss -ltnp | grep -E ':(80|443) '` 找到它。
 - **WebSocket。** 开箱即用，不需要额外选项。
 - **能手动修改生成的文件吗？** 站点模板、`.env`、compose 文件：可以。基础文件（`nginx.conf`、钩子脚本、Dockerfile）也可以改，但新版本改动它们时，`pn migrate` 会提议替换（并先备份）。
+- **一台服务器上能给项目 A、项目 B 各建一个 pn 项目吗？** 不能：一台服务器只有一个 pn 代理，由所有项目共用。见 [一台服务器上的多个项目](#一台服务器上的多个项目)。
 - **可以把自己的服务（比如数据库）放进 `docker-compose.yml` 吗？** 可以，`pn` 不会动它们，但单独一个 compose 项目更清晰。见 [与其他服务共存及接入已有环境](#与其他服务共存及接入已有环境)。
 - **不用 npm 官方仓库怎么安装？** 从 GitHub：`npm install -g github:samcn26/proxy-nginx-cli`；用压缩包：在仓库里 `npm pack`，再在服务器上 `npm install -g ./proxy-nginx-cli-<版本>.tgz`；或者保留一份 git 仓库并 `npm link`，这种方式 `pn upgrade` 会用 `git pull` 更新。通过压缩包或 GitHub 安装的副本执行 `pn upgrade` 时，会去 npm 仓库找这个包，所以应该用同样的方式重新安装。
 - **支持通配符证书吗？** 暂不支持（需要 DNS-01 验证）。

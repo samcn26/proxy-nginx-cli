@@ -66,3 +66,29 @@ test('the English and Chinese command help list the same commands', () => {
     assert.match(zh, new RegExp(`^  ${names[0]}[ \\[<]`, 'm'), `pn --help cn does not list ${names[0]}`);
   }
 });
+
+test('the two READMEs have the same sections and subsections in the same order', () => {
+  // Compare heading levels and the code-ish identifiers, which are language independent,
+  // so a section added to one file and forgotten in the other fails here.
+  const outline = (text) => text
+    .split('\n')
+    .filter((line) => /^#{2,3} /.test(line))
+    .map((line) => line.match(/^#+/)[0].length);
+
+  assert.deepEqual(outline(readmes['README.zh-CN.md']), outline(readmes['README.md']));
+});
+
+test('every command example in one README appears in the other', () => {
+  const examples = (text) => new Set(
+    [...text.matchAll(/^(?:\$ )?(pn [a-z][^\n#]*?)\s*(?:#.*)?$/gm)]
+      .map((match) => match[1].trim())
+      .filter((line) => /^pn [a-z-]+( |$)/.test(line))
+  );
+  const en = examples(readmes['README.md']);
+  // The only translated token inside a command line is the generic "[options]" placeholder.
+  const zh = new Set([...examples(readmes['README.zh-CN.md'])].map((line) => line.replace('[选项]', '[options]')));
+
+  assert.ok(en.size > 40);
+  assert.deepEqual([...en].filter((line) => !zh.has(line)), []);
+  assert.deepEqual([...zh].filter((line) => !en.has(line)), []);
+});

@@ -55,6 +55,7 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn up [--pull]`: build/start/recreate `proxy-nginx`; tests the new config in a throwaway container first when the proxy is running. `--pull` first runs `build --pull proxy-nginx` and `pull certbot` (patch releases of the pinned tags).
 - `pn stop`: stop compose containers without deleting them. With extra (user-owned) services in `docker-compose.yml` it stops only `proxy-nginx` and `certbot`.
 - `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs. With extra services it runs `rm -s -f proxy-nginx certbot` instead and leaves the rest (and the network) alone.
+- One pn proxy per server: ports 80/443 and the container names `proxy-nginx`/`proxy-certbot` are fixed. `pn up`/`pn restart` (real compose runner only) and `pn doctor` detect a `proxy-nginx` container that belongs to another project directory (compose working-dir label) and stop with an explanation instead of Docker's name-conflict error.
 - `docker-compose.yml` may contain user services. `pn` edits it only in `pn network` and `pn migrate` (YAML-aware, adds only what is missing, never changes existing values); the service names `proxy-nginx` and `certbot` are fixed.
 - `pn restart [--pull]`: recreate `proxy-nginx`; use after editing `nginx/templates/*.template`.
 - `pn status [--json]`: show compose status plus proxy state and nginx version, sites, attached networks, and certificates with expiry.
@@ -101,7 +102,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 165 passing tests.
+Expected current test count: 171 passing tests.
 
 Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 
