@@ -14,7 +14,7 @@ English | [简体中文](README.zh-CN.md)
 - [Requirements and install](#requirements-and-install)
 - [Quick start](#quick-start)
 - [Command reference](#command-reference)
-- [Guides](#guides): [sites](#sites) · [certificates](#certificates) · [basic auth](#basic-auth) · [applying changes](#how-changes-are-applied) · [networks](#docker-networks) · [logs](#logs) · [upgrading](#upgrading-and-rolling-back) · [examples](#examples)
+- [Guides](#guides): [sites](#sites) · [certificates](#certificates) · [basic auth](#basic-auth) · [applying changes](#how-changes-are-applied) · [networks](#docker-networks) · [logs](#logs) · [upgrading](#upgrading-and-rolling-back) · [other services and existing setups](#other-services-and-existing-setups) · [examples](#examples)
 - [Project layout and configuration](#project-layout-and-configuration)
 - [Troubleshooting and FAQ](#troubleshooting-and-faq)
 - [Agent skill](#agent-skill) · [Development](#development)
@@ -261,6 +261,8 @@ Stop the project containers but keep them (`docker compose stop`). Start again w
 pn stop
 ```
 
+If `docker-compose.yml` also defines services of your own (a database, an app), only pn's services (`proxy-nginx`, `certbot`) are stopped and the others keep running.
+
 ### pn down
 
 Stop **and remove** the containers and the default network (`docker compose down`).
@@ -270,6 +272,8 @@ pn down
 ```
 
 Files, templates, certificates and logs stay on disk. Start again with `pn up`.
+
+If `docker-compose.yml` also defines services of your own, `pn down` removes only `proxy-nginx` and `certbot` (`docker compose rm -s -f`) and leaves the others and the compose network alone.
 
 ### pn network
 
@@ -445,6 +449,30 @@ pn rollback --yes && pn restart
 
 Check the running Nginx version with `pn status`. Images are pinned in `.env` (`NGINX_IMAGE`, `CERTBOT_IMAGE`); a plain `pn up` keeps what is built. To take new patch releases of the pinned tags use `pn up --pull`; to move to another minor version change `NGINX_IMAGE` first.
 
+### Other services and existing setups
+
+**Can I edit `docker-compose.yml`, or put my own services in it?** Yes. `pn` edits that file in two situations only, always through a YAML parser that keeps comments, ordering and everything it does not manage:
+
+| Command | What it changes |
+|---|---|
+| `pn network add/remove` | `networks` of `proxy-nginx` and the matching top-level `networks` entry (an entry still used by another service is kept). |
+| `pn migrate --yes` | Only adds what is missing: the `NGINX_IMAGE` build argument, the tuning variables, the `./sites` and `./nginx/auth` mounts; pins `certbot/certbot` / `certbot/certbot:latest` to `CERTBOT_IMAGE`. Values you already set (restart policy, ports, extra mounts, a custom certbot tag) are never changed. |
+
+Your own services, ports, mounts, environment, volumes and networks are left as they are, and `pn migrate` keeps them (a backup of the previous file is still written to `.pn-backup/`). Two service names must stay: `proxy-nginx` and `certbot`. `pn up`/`pn restart` recreate only `proxy-nginx`; `pn stop` and `pn down` act only on `proxy-nginx` and `certbot` when other services exist; `pn status` lists everything.
+
+**Recommendation for databases and other non-HTTP services** (for example TimescaleDB on port 5432): keep them in their **own compose project**, not in the proxy's file. Nginx only proxies HTTP(S), so the proxy never needs to reach the database; your applications connect to it directly (publish the port, or put both on a shared Docker network). Separate projects mean `pn down`, `pn migrate` or re-creating the proxy project can never affect the database. Bind the port to localhost when only local applications need it: `"127.0.0.1:5432:5432"`.
+
+**Moving a service (and its data) out of the proxy's compose file without losing data:**
+
+1. Note the image tag, environment and mounts of the service.
+2. Stop it: `docker compose stop <service>`. For a bind-mounted data directory (`./data/<name>`) the data stays on disk. Named volumes would **not** follow a new project name, so copy those explicitly.
+3. Make a backup of the data directory while the service is stopped (`sudo cp -a data/<name> data/<name>.bak`).
+4. Create the new project (for example `~/services/<name>/docker-compose.yml`) with the **same image tag**, the same environment, and the data directory mounted from the same place (an absolute path avoids moving anything). Join an external network (`networks: { shared: { external: true } }`) if other containers reach it by name.
+5. Remove the old container (`docker rm <container_name>`; the data is on the host) and delete the service from the old compose file, then start the new project.
+6. Check the application connects, then remove the backup.
+
+**Adopting a hand-made proxy setup.** Do not run `pn migrate` in a directory that `pn init` did not create: it replaces the generated files (with a backup) and would overwrite your own `Dockerfile`, `nginx.conf` and base templates. Instead create a fresh project next to it (`mkdir proxy-new && cd proxy-new && pn init`), re-create the sites with `pn add` (compare with `pn template list`), copy the Let's Encrypt data (`cp -a old/ssl/certs proxy-new/ssl/certs`, same layout if the old setup used `/etc/letsencrypt`) to avoid re-issuing, then switch: stop the old proxy (ports 80/443), `pn up --pull` in the new project, and check with `pn doctor <domain>`. Rolling back is starting the old proxy again.
+
 ### Examples
 
 ```bash
@@ -508,6 +536,8 @@ Back up: `nginx/templates/`, `nginx/auth/`, `sites/`, `.env`, `ssl/certs/`. To m
 - **Ports 80/443 already in use.** Another service owns them. `pn doctor` shows this when the proxy is stopped; find it with `ss -ltnp | grep -E ':(80|443) '`.
 - **WebSockets.** Supported out of the box; no extra option needed.
 - **Can I edit the generated files?** Site templates, `.env`, the compose file: yes. Base files (`nginx.conf`, hooks, Dockerfile) can be edited too, but `pn migrate` will propose to replace them (with a backup) when a new version changes them.
+- **Can I put my own services (a database) in `docker-compose.yml`?** Yes, `pn` leaves them alone, but a separate compose project is cleaner. See [Other services and existing setups](#other-services-and-existing-setups).
+- **How do I install without npm's public registry?** From GitHub: `npm install -g github:samcn26/proxy-nginx-cli`; from a tarball: run `npm pack` in the repository and `npm install -g ./proxy-nginx-cli-<version>.tgz` on the server; or keep a git checkout and `npm link` it, which `pn upgrade` updates with `git pull`. `pn upgrade` on a copy installed from a tarball or GitHub looks for the package on the npm registry, so reinstall the same way instead.
 - **Is a wildcard certificate supported?** Not yet (it needs DNS-01 validation).
 
 ## Agent skill

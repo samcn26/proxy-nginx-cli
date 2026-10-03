@@ -53,8 +53,9 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn remove <domain>`: remove a site template.
 - `pn remove <domain> --run [--purge-cert]`: remove a site template, apply like `pn add --run`, optionally delete its certificate.
 - `pn up [--pull]`: build/start/recreate `proxy-nginx`; tests the new config in a throwaway container first when the proxy is running. `--pull` first runs `build --pull proxy-nginx` and `pull certbot` (patch releases of the pinned tags).
-- `pn stop`: stop compose containers without deleting them.
-- `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs.
+- `pn stop`: stop compose containers without deleting them. With extra (user-owned) services in `docker-compose.yml` it stops only `proxy-nginx` and `certbot`.
+- `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs. With extra services it runs `rm -s -f proxy-nginx certbot` instead and leaves the rest (and the network) alone.
+- `docker-compose.yml` may contain user services. `pn` edits it only in `pn network` and `pn migrate` (YAML-aware, adds only what is missing, never changes existing values); the service names `proxy-nginx` and `certbot` are fixed.
 - `pn restart [--pull]`: recreate `proxy-nginx`; use after editing `nginx/templates/*.template`.
 - `pn status [--json]`: show compose status plus proxy state and nginx version, sites, attached networks, and certificates with expiry.
 - `pn upgrade`: upgrade the CLI itself, not a proxy project. Git-linked installs pull and npm install; npm installs run global npm install latest.
@@ -100,7 +101,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 159 passing tests.
+Expected current test count: 165 passing tests.
 
 Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 

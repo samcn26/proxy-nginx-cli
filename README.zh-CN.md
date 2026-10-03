@@ -14,7 +14,7 @@
 - [环境要求与安装](#环境要求与安装)
 - [快速开始](#快速开始)
 - [命令参考](#命令参考)
-- [使用指南](#使用指南)：[站点](#站点) · [证书](#证书) · [基础认证](#基础认证) · [变更如何生效](#变更如何生效) · [Docker 网络](#docker-网络) · [日志](#日志) · [升级与回滚](#升级与回滚) · [示例](#示例)
+- [使用指南](#使用指南)：[站点](#站点) · [证书](#证书) · [基础认证](#基础认证) · [变更如何生效](#变更如何生效) · [Docker 网络](#docker-网络) · [日志](#日志) · [升级与回滚](#升级与回滚) · [与其他服务共存及接入已有环境](#与其他服务共存及接入已有环境) · [示例](#示例)
 - [项目结构与配置](#项目结构与配置)
 - [故障排查与常见问题](#故障排查与常见问题)
 - [Agent 技能包](#agent-技能包) · [开发](#开发)
@@ -261,6 +261,8 @@ pn reload
 pn stop
 ```
 
+如果 `docker-compose.yml` 里还有你自己的服务（数据库、应用），只会停止 pn 管理的服务（`proxy-nginx`、`certbot`），其他服务继续运行。
+
 ### pn down
 
 停止**并删除**容器和默认网络（`docker compose down`）。
@@ -270,6 +272,8 @@ pn down
 ```
 
 文件、模板、证书和日志都保留在磁盘上。之后用 `pn up` 启动。
+
+如果 `docker-compose.yml` 里还有你自己的服务，`pn down` 只删除 `proxy-nginx` 和 `certbot`（`docker compose rm -s -f`），其他服务和 compose 网络都不动。
 
 ### pn network
 
@@ -445,6 +449,30 @@ pn rollback --yes && pn restart
 
 用 `pn status` 查看运行中的 Nginx 版本。镜像版本固定在 `.env`（`NGINX_IMAGE`、`CERTBOT_IMAGE`）；普通的 `pn up` 沿用已构建的镜像。要获取固定标签下的新补丁版本，用 `pn up --pull`；要升级到别的次版本，先修改 `NGINX_IMAGE`。
 
+### 与其他服务共存及接入已有环境
+
+**可以修改 `docker-compose.yml`，或者往里加自己的服务吗？** 可以。`pn` 只在两种情况下修改这个文件，并且始终通过 YAML 解析器，保留注释、顺序和所有它不管理的内容：
+
+| 命令 | 修改内容 |
+|---|---|
+| `pn network add/remove` | `proxy-nginx` 的 `networks`，以及对应的顶层 `networks` 条目（仍被其他服务使用的条目会保留）。 |
+| `pn migrate --yes` | 只补充缺失的内容：`NGINX_IMAGE` 构建参数、调优变量、`./sites` 和 `./nginx/auth` 挂载；把 `certbot/certbot` / `certbot/certbot:latest` 固定为 `CERTBOT_IMAGE`。你已经设置的值（重启策略、端口、额外挂载、自定义的 certbot 标签）不会被改动。 |
+
+你自己的服务、端口、挂载、环境变量、volumes 和 networks 都保持原样，`pn migrate` 会保留它们（仍会把改动前的文件备份到 `.pn-backup/`）。有两个服务名必须保留：`proxy-nginx` 和 `certbot`。`pn up`/`pn restart` 只重建 `proxy-nginx`；存在其他服务时，`pn stop` 和 `pn down` 只作用于 `proxy-nginx` 和 `certbot`；`pn status` 会列出所有服务。
+
+**数据库等非 HTTP 服务的建议**（例如 5432 端口的 TimescaleDB）：放在**独立的 compose 项目**里，不要放进代理的文件。Nginx 只代理 HTTP(S)，代理根本不需要访问数据库；你的应用直接连数据库（发布端口，或者让两者加入同一个 Docker 网络）。分开之后，`pn down`、`pn migrate` 或重建代理项目都不可能影响数据库。只有本机应用需要访问时，把端口绑定到本地：`"127.0.0.1:5432:5432"`。
+
+**把一个服务（连同数据）从代理的 compose 文件里搬出去，且不丢数据：**
+
+1. 记下该服务的镜像标签、环境变量和挂载。
+2. 停止它：`docker compose stop <服务名>`。绑定挂载的数据目录（`./data/<名称>`）数据会留在磁盘上；而具名 volume **不会**跟着新的项目名走，需要单独复制。
+3. 服务停止状态下备份数据目录（`sudo cp -a data/<名称> data/<名称>.bak`）。
+4. 创建新项目（例如 `~/services/<名称>/docker-compose.yml`），使用**相同的镜像标签**、相同的环境变量，并从同一个位置挂载数据目录（用绝对路径就不需要移动任何东西）。如果其他容器按名称访问它，让它加入一个外部网络（`networks: { shared: { external: true } }`）。
+5. 删除旧容器（`docker rm <container_name>`，数据在主机上不受影响），并把该服务从旧 compose 文件中删除，然后启动新项目。
+6. 确认应用能连上后，再删除备份。
+
+**接入手工搭建的代理环境。** 不要在不是 `pn init` 创建的目录里运行 `pn migrate`：它会替换生成的文件（有备份），会覆盖你自己的 `Dockerfile`、`nginx.conf` 和基础模板。正确做法是在旁边新建一个项目（`mkdir proxy-new && cd proxy-new && pn init`），用 `pn add` 重新创建站点（可用 `pn template list` 对照），复制 Let's Encrypt 数据避免重新签发（`cp -a old/ssl/certs proxy-new/ssl/certs`，如果旧环境也是 `/etc/letsencrypt` 目录结构），然后切换：停掉旧代理（占用 80/443），在新项目里 `pn up --pull`，再用 `pn doctor <域名>` 检查。回滚就是重新启动旧代理。
+
 ### 示例
 
 ```bash
@@ -508,6 +536,8 @@ logs/                     Nginx 日志
 - **80/443 端口已被占用。** 被别的服务占用了。代理停止时 `pn doctor` 会指出这一点；用 `ss -ltnp | grep -E ':(80|443) '` 找到它。
 - **WebSocket。** 开箱即用，不需要额外选项。
 - **能手动修改生成的文件吗？** 站点模板、`.env`、compose 文件：可以。基础文件（`nginx.conf`、钩子脚本、Dockerfile）也可以改，但新版本改动它们时，`pn migrate` 会提议替换（并先备份）。
+- **可以把自己的服务（比如数据库）放进 `docker-compose.yml` 吗？** 可以，`pn` 不会动它们，但单独一个 compose 项目更清晰。见 [与其他服务共存及接入已有环境](#与其他服务共存及接入已有环境)。
+- **不用 npm 官方仓库怎么安装？** 从 GitHub：`npm install -g github:samcn26/proxy-nginx-cli`；用压缩包：在仓库里 `npm pack`，再在服务器上 `npm install -g ./proxy-nginx-cli-<版本>.tgz`；或者保留一份 git 仓库并 `npm link`，这种方式 `pn upgrade` 会用 `git pull` 更新。通过压缩包或 GitHub 安装的副本执行 `pn upgrade` 时，会去 npm 仓库找这个包，所以应该用同样的方式重新安装。
 - **支持通配符证书吗？** 暂不支持（需要 DNS-01 验证）。
 
 ## Agent 技能包
