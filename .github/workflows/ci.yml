@@ -134,6 +134,15 @@ jobs:
           "$PN" auth disable secure.example.test --run
           expect 200 -k --resolve secure.example.test:443:127.0.0.1 https://secure.example.test/
 
+          # pn doctor: healthy project (certificates are self-signed, so warnings only).
+          "$PN" doctor | tee doctor.txt
+          grep -q '\[ok\]   Proxy container is running' doctor.txt
+          grep -q '\[ok\]   The templates on disk pass nginx -t' doctor.txt
+          "$PN" doctor --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["summary"]["fail"]==0, d'
+          # A domain that does not resolve must fail the checks (and stop pn cert before certbot runs).
+          if "$PN" doctor nxdomain.invalid; then echo "expected doctor to fail"; exit 1; fi
+          if "$PN" cert secure.example.test; then echo "expected the preflight to stop pn cert"; exit 1; fi
+
           # Log rotation hook is installed and runs.
           docker exec proxy-nginx sh -c 'ls /docker-entrypoint.d/ && LOG_ROTATE_SIZE_MB=1000 sh /docker-entrypoint.d/60-rotate-logs.sh --once'
 

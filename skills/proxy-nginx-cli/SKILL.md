@@ -31,6 +31,7 @@ with `pn status --json` before changing anything.
 ## Inspect
 
 ```bash
+pn doctor [domain] --json   # checks[] with status ok|info|warn|fail and a fix hint; exit 1 on fail
 pn status --json        # proxy.running, sites[], networks[], certificates[]
 pn template list        # domain -> upstream [preset, ssl, aliases]
 pn logs [domain] -n 200 # access log; --error for the error log; -f follows
@@ -70,6 +71,7 @@ pn add admin.example.com 127.0.0.1:8080 --allow 203.0.113.0/24 --max-body-size 1
 **Issue / renew certificates**
 
 ```bash
+pn doctor app.example.com                # DNS, CAA, HTTP reachability first
 pn cert app.example.com --email ops@example.com
 pn cert app.example.com --staging        # test the flow first
 pn cert app.example.com --force-renew
@@ -138,6 +140,9 @@ Edited-since-migrate files are kept unless `--force`.
 
 ## Recover from certbot failures
 
+0. `pn doctor <domain> [--ip <public ip>]`: it names the usual causes (no DNS record, wrong address,
+   CAA forbidding Let's Encrypt, port 80 not reaching this proxy, AAAA record without working IPv6).
+   `pn cert` runs the DNS/CAA part itself before asking Let's Encrypt (`--skip-checks` to bypass).
 1. `pn cert <domain> --staging` to see the real error without burning rate limits.
 2. Check DNS (`dig +short <domain>`), firewall for 80/443, and that
    `http://<domain>/.well-known/acme-challenge/x` returns 404 (not a timeout or redirect to

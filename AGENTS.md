@@ -15,12 +15,14 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
   - `lib/site-template.js`: site template rendering (proxy/static/spa/redirect)
   - `lib/sites.js`, `lib/certs.js`: read site templates and certificates (status, cert domains)
   - `lib/compose-file.js`: YAML edits of `docker-compose.yml` (networks, migration)
-  - `lib/migrate.js`: `pn migrate`
+  - `lib/migrate.js`: `pn migrate` and `pn rollback`
+  - `lib/auth.js`: basic auth (apr1 hashes, htpasswd files, template markers)
+  - `lib/doctor.js`: `pn doctor` checks (DNS/HTTP/TLS/Docker are injectable for tests)
   - `lib/scripts/apply-sites.sh`: runs inside the container to re-render, test, and reload
   - `skills/proxy-nginx-cli/SKILL.md`: agent skill for this CLI
   - `.github/workflows/ci.yml`: unit tests plus a Docker integration job
   - `test/*.test.js`: Node test runner tests
-  - `README.md`: user-facing docs
+  - `README.md` and `README.zh-CN.md`: user-facing docs in English and Chinese (kept in sync)
 - Main branch for tested CLI work: `master`
 - Development branch may still be used for incremental work: `dev`
 - Git remote: `git@github.com:samcn26/proxy-nginx-cli.git`
@@ -31,6 +33,7 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - Use `rg` / `rg --files` for search.
 - Use `apply_patch` for manual edits.
 - Do not remove user changes or generated runtime data unless explicitly asked.
+- Keep `README.md` and `README.zh-CN.md` in sync: same sections, same commands. `test/docs.test.js` fails when a command or option is missing from either, or when their structure diverges. `pn --help cn` (`chineseHelpText` in `lib/cli.js`) must list every command too.
 - Keep public examples generic. Do not add real private validation domains to committed docs or tests.
 - Generated `example/` output should not be committed.
 - Before claiming completion, run fresh verification commands and report the result.
@@ -56,7 +59,8 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn status [--json]`: show compose status plus proxy state and nginx version, sites, attached networks, and certificates with expiry.
 - `pn upgrade`: upgrade the CLI itself, not a proxy project. Git-linked installs pull and npm install; npm installs run global npm install latest.
 - `pn reload`: run `nginx -t` then `nginx -s reload` in the running proxy container.
-- `pn cert <domain>`: request Let's Encrypt cert with certbot webroot (`--cert-name <domain>`), reload nginx, then start certbot renewal service.
+- `pn cert <domain>`: preflight (`pn doctor` domain checks; only `fail` results such as no DNS record or a CAA that forbids Let's Encrypt block, `--skip-checks` bypasses), then request Let's Encrypt cert with certbot webroot (`--cert-name <domain>`), reload nginx, then start certbot renewal service.
+- `pn doctor [domain] [--ip <addr>] [--json]`: read-only health checks (Docker, schema, proxy, `nginx -t`, ports, certificates; for a domain also DNS, address, CAA, HTTP reachability via a temporary file in `ssl/www`, IPv6, HTTPS). Exit status 1 when something fails. HTTP reachability problems are warnings (hairpin NAT).
 - `pn cert ... --email <email>` / `--staging` / `--force-renew`: account email, Let's Encrypt staging, forced renewal (automatic when moving a staging lineage to production). `pn cert` pauses the certbot renewal service while issuing.
 - Domains, upstream hosts/ports, and network names are validated; `--cert` with `--no-ssl` is rejected.
 - `pn example`: create an example project.
@@ -96,7 +100,7 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 139 passing tests.
+Expected current test count: 159 passing tests.
 
 Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 

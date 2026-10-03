@@ -5,6 +5,9 @@
 ### Added
 - `pn template list|edit`, `pn logs`, `pn migrate`, `pn rollback`, `pn status --json`.
 - `pn migrate --yes --run` rolls back automatically when the restart fails.
+- `pn doctor [domain]`: project and certificate health, DNS/CAA/HTTP/IPv6/HTTPS checks, `--ip`, `--json`.
+- `pn cert` runs DNS/CAA preflight checks first (`--skip-checks` to bypass).
+- `README.zh-CN.md` and detailed per-command references in both READMEs; a test keeps them complete.
 - `pn auth add|remove|disable|list`: per-site basic auth (apr1 hashes, no extra tools; project schema 3 adds the `nginx/auth` mount, run `pn migrate --yes` on older projects).
 - `pn up --pull` / `pn restart --pull` to pick up patch releases of the pinned images.
 - `pn status` shows the running nginx version.
