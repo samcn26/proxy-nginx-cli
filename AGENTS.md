@@ -10,7 +10,15 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - Main files:
   - `bin/pn`: shell shim for local/npm command execution
   - `lib/cli.js`: commander CLI definitions and help text
-  - `lib/commands.js`: command implementations and project templates
+  - `lib/commands.js`: command implementations
+  - `lib/project-files.js`: generated project files (Dockerfile, compose, nginx.conf, hooks)
+  - `lib/site-template.js`: site template rendering (proxy/static/spa/redirect)
+  - `lib/sites.js`, `lib/certs.js`: read site templates and certificates (status, cert domains)
+  - `lib/compose-file.js`: YAML edits of `docker-compose.yml` (networks, migration)
+  - `lib/migrate.js`: `pn migrate`
+  - `lib/scripts/apply-sites.sh`: runs inside the container to re-render, test, and reload
+  - `skills/proxy-nginx-cli/SKILL.md`: agent skill for this CLI
+  - `.github/workflows/ci.yml`: unit tests plus a Docker integration job
   - `test/*.test.js`: Node test runner tests
   - `README.md`: user-facing docs
 - Main branch for tested CLI work: `master`
@@ -34,19 +42,22 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 - `pn add <domain> -H <host> -p <port>`: add a proxy site.
 - `pn add <domain> <target>`: add a proxy site from URL or `host:port` shorthand.
 - `pn add ... --force`: overwrite an existing site template. Without `--force`, existing site templates are preserved.
-- `pn add ... --run`: apply immediately by running the equivalent of `pn up`.
+- `pn add ... --run`: apply immediately. If the proxy is running, re-render templates in the container, `nginx -t`, reload (no restart, rollback on failure); otherwise start it.
 - `pn add ... --cert`: implies apply, request cert, reload nginx, and start certbot renewal service.
+- `pn add ... --alias/--www/--redirect-aliases`: extra names; certs cover all names in the site template.
+- `pn add ... --template static|spa|redirect`, `--allow`, `--max-body-size`, `--timeout`, `--access-log`, `--hsts-subdomains`.
+- `pn template list|edit <domain> [--run]`, `pn logs [domain] [-f] [--error]`, `pn migrate [--yes] [--run]`.
 - `pn remove <domain>`: remove a site template.
-- `pn remove <domain> --run`: remove a site template and apply with the equivalent of `pn up`.
-- `pn up`: build/start/recreate `proxy-nginx`.
+- `pn remove <domain> --run [--purge-cert]`: remove a site template, apply like `pn add --run`, optionally delete its certificate.
+- `pn up`: build/start/recreate `proxy-nginx`; tests the new config in a throwaway container first when the proxy is running.
 - `pn stop`: stop compose containers without deleting them.
 - `pn down`: run compose down; remove containers/default network while keeping files, templates, logs, and certs.
 - `pn restart`: recreate `proxy-nginx`; use after editing `nginx/templates/*.template`.
-- `pn status`: show compose status plus sites, attached networks, and cert renewal configs.
+- `pn status [--json]`: show compose status plus sites, attached networks, and certificates with expiry.
 - `pn upgrade`: upgrade the CLI itself, not a proxy project. Git-linked installs pull and npm install; npm installs run global npm install latest.
 - `pn reload`: run `nginx -t` then `nginx -s reload` in the running proxy container.
 - `pn cert <domain>`: request Let's Encrypt cert with certbot webroot (`--cert-name <domain>`), reload nginx, then start certbot renewal service.
-- `pn cert ... --email <email>` / `--staging`: account email and Let's Encrypt staging. Also accepted by `pn add --cert` and `pn example --cert`.
+- `pn cert ... --email <email>` / `--staging` / `--force-renew`: account email, Let's Encrypt staging, forced renewal (automatic when moving a staging lineage to production). `pn cert` pauses the certbot renewal service while issuing.
 - Domains, upstream hosts/ports, and network names are validated; `--cert` with `--no-ssl` is rejected.
 - `pn example`: create an example project.
 - `pn example --run`: run local example.
@@ -61,11 +72,15 @@ This file is the handoff guide for coding agents working on `proxy-nginx-cli`.
 
 - The implementation prefers `docker-compose` only when `docker-compose version` is a real compose command.
 - If `docker-compose` is only a Docker alias, it falls back to `docker compose`.
-- `pn up` and `--run` use:
+- `pn up`, `pn restart` and `pn network ... --run` recreate the container:
 
 ```bash
 up -d --build --force-recreate proxy-nginx
 ```
+
+- `pn add/remove/template edit --run` use `exec -T proxy-nginx sh -c <lib/scripts/apply-sites.sh>` instead (no restart).
+- Images are pinned (`NGINX_IMAGE`, `CERTBOT_IMAGE` in `.env`); update the defaults in `lib/project-files.js` deliberately.
+- Changing a generated base file means bumping `PROJECT_SCHEMA_VERSION` in `lib/project-files.js` so `pn migrate` can carry it to existing projects.
 
 ## Testing
 
@@ -80,7 +95,9 @@ npm pack --dry-run
 rg -n "<private validation domain or owner-specific string>" -g '!node_modules/**' -g '!package-lock.json' . || true
 ```
 
-Expected current test count: 50 passing tests.
+Expected current test count: 106 passing tests.
+
+Docker is not available in every agent sandbox. The `docker` CI job covers real Docker behavior; locally, render templates and run `nginx -t` with a host nginx when possible.
 
 ## Server Notes
 

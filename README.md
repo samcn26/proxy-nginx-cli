@@ -15,14 +15,22 @@ pn --help cn
 
 ```bash
 pn init
-pn reset
+pn reset [--yes]
 pn add <domain> -H <host> -p <port>
 pn add <domain> <target-url>
 pn add <domain> <host:port> --run
 pn add <domain> <host:port> --run --cert
 pn add <domain> <host:port> --force
+pn add <domain> <host:port> --alias <domain> --www --redirect-aliases
+pn add <domain> --template static|spa
+pn add <domain> <url> --template redirect
+pn add <domain> <host:port> --allow <cidr> --max-body-size <size> --timeout <seconds> --access-log
 pn remove <domain>
-pn remove <domain> --run
+pn remove <domain> --run [--purge-cert]
+pn template list
+pn template edit <domain> [--run]
+pn logs [domain] [-n <lines>] [-f] [--error]
+pn migrate [--yes] [--run]
 pn network add <network>
 pn network add <network> --run
 pn network remove <network> --run
@@ -30,12 +38,13 @@ pn up
 pn stop
 pn down
 pn restart
-pn status
+pn status [--json]
 pn upgrade
 pn reload
 pn cert <domain>
 pn cert <domain> --email <email>
 pn cert <domain> --staging
+pn cert <domain> --force-renew
 pn example
 pn example --run
 pn example <domain> --run
@@ -103,6 +112,46 @@ pn remove app.example.com --run
 
 Domains, upstream hosts, ports, and network names are validated before anything is written. Target URLs must contain only protocol, host, and port (no path).
 
+### Aliases and www
+
+```bash
+pn add example.com 127.0.0.1:3000 --alias blog.example.com --www
+pn add example.com 127.0.0.1:3000 --www --redirect-aliases
+```
+
+`--alias` (repeatable) and `--www` add names to the same site. `--redirect-aliases` makes the aliases answer with a `301` to the main domain instead. One certificate covers every name the site template declares, so `pn cert example.com` requests all of them.
+
+### Site types
+
+```bash
+pn add docs.example.com --template static        # serves ./sites/docs.example.com
+pn add app.example.com --template spa            # static + fallback to index.html
+pn add old.example.com https://new.example.com --template redirect
+```
+
+`static` and `spa` create `sites/<domain>/index.html` as a placeholder (never overwriting existing files). `redirect` sends every request to the target and keeps the path and query string.
+
+### Per-site options
+
+```bash
+pn add admin.example.com 127.0.0.1:3000 \
+  --allow 203.0.113.0/24 --allow 2001:db8::/32 \
+  --max-body-size 10m --timeout 60 --access-log
+```
+
+- `--allow` (repeatable) limits access to those IPs/CIDRs; the ACME challenge path stays open for certificates.
+- `--max-body-size` sets `client_max_body_size` (default `50m`), `--timeout` the proxy read/send timeout in seconds (default `300`).
+- `--access-log` writes `logs/<domain>.access.log` (read it with `pn logs <domain>`).
+- `--hsts-subdomains` adds `includeSubDomains` to HSTS. It is off by default because on an apex domain it forces HTTPS for every sibling subdomain.
+
+### Editing templates
+
+```bash
+pn template list
+pn template edit app.example.com          # opens $VISUAL/$EDITOR, then runs nginx -t
+pn template edit app.example.com --run    # ...and applies it
+```
+
 ## Certificates
 
 ```bash
@@ -129,12 +178,23 @@ pn restart   # rebuilds the image so the new hook is included
 
 ```bash
 pn status
+pn status --json
+pn logs
 pn stop
 pn down
 pn restart
 pn reload
 pn upgrade
 ```
+
+How changes are applied:
+
+- `pn add ... --run`, `pn remove ... --run`, `pn template edit ... --run` re-render the templates **inside the running container**, run `nginx -t`, and reload. The container is not restarted, so connections are not dropped, and if the test fails the previous configuration is restored and the command fails. If the proxy is not running they start it instead.
+- `pn up`, `pn restart` and `pn network ... --run` recreate the container. When the proxy is already running, the new configuration is first tested in a throwaway container; if it is invalid the running proxy is left untouched.
+
+`pn status` lists sites (with upstream and aliases), networks and certificates (expiry date, days left, and `self-signed` / `staging` / `expiring soon` flags). `pn status --json` prints the same data for scripts and agents.
+
+`pn logs` prints the end of `logs/access.log` (`--error` for the error log, `<domain>` for a per-site log, `-f` to follow). Logs rotate by size inside the container: `LOG_ROTATE_SIZE_MB` (default 50) and `LOG_ROTATE_KEEP` (default 5) in `.env`.
 
 `pn stop` maps to `docker compose stop`: containers are stopped but kept.
 
@@ -145,6 +205,18 @@ pn upgrade
 `pn restart` recreates `proxy-nginx`, which reruns the Nginx image entrypoint and regenerates config from `nginx/templates/*.template`. Use it after editing templates.
 
 `pn upgrade` upgrades the `proxy-nginx-cli` command itself. Git-linked installs run `git pull --ff-only` and `npm install`; npm installs run `npm install -g proxy-nginx-cli@latest`.
+
+## Updating Existing Projects
+
+`pn init` only creates missing files, so projects made by an older `pn` do not receive newer generated files by themselves. Use:
+
+```bash
+pn migrate          # preview what would change
+pn migrate --yes    # apply; changed files are backed up to .pn-backup/
+pn restart
+```
+
+`pn migrate` updates the Dockerfile, `nginx/nginx.conf`, entrypoint hooks, base templates, the `docker-compose.yml` (through a YAML parser, keeping your comments and extra settings) and adds image pins to `.env`. It never touches site templates. The project schema version is stored in `.pn.json`.
 
 ## Docker Networks
 
@@ -244,6 +316,10 @@ Then open:
 https://app.example.com
 ```
 
+## Agent Skill
+
+`skills/proxy-nginx-cli/SKILL.md` is a ready-to-use skill for coding agents: workflows, safety rules, and certbot recovery steps for this CLI. Copy it into your agent's skills directory (for example `.claude/skills/proxy-nginx-cli/`).
+
 ## Generated Project Layout
 
 `pn init` creates:
@@ -259,8 +335,12 @@ nginx/
 ssl/
   certs/
   www/
+sites/            # files for --template static|spa
 logs/
+.pn.json          # project schema version (see pn migrate)
 ```
+
+Docker images are pinned in `.env` (`NGINX_IMAGE`, `CERTBOT_IMAGE`); change them deliberately and run `pn up`.
 
 `pn example` creates:
 

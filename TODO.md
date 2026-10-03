@@ -1,71 +1,37 @@
 # TODO
 
-Public roadmap for `proxy-nginx-cli`.
+Public roadmap for `proxy-nginx-cli`. Work is tracked as GitHub issues; see the
+roadmap issue: https://github.com/samcn26/proxy-nginx-cli/issues/1
 
 ## Next Release: npm Publish
 
-- [ ] Review package metadata before publishing:
-  - [ ] `name`
-  - [ ] `version`
-  - [x] `description`
-  - [x] `keywords`
-  - [x] `author`
-  - [x] `license`
-  - [x] `repository`
-  - [x] `bugs`
-  - [x] `homepage`
+Done in code: package metadata, `LICENSE`, Node `bin/pn` entry (works with npm's
+Windows shims), CI (`.github/workflows/ci.yml`), pinned images.
+
 - [ ] Decide whether the public binary name `pn` is acceptable long term.
-- [ ] Run release checks:
-  - [ ] `npm test`
-  - [ ] `./bin/pn --help`
-  - [ ] `./bin/pn --help cn`
-  - [ ] `npm pack --dry-run`
-  - [ ] scan for private domains or owner-specific strings.
-- [ ] Publish to npm.
-- [ ] Test from npm in a clean temporary project:
-  - [ ] `npm install -g proxy-nginx-cli`
-  - [ ] `pn --help`
-  - [ ] `pn init`
-  - [ ] `pn add app.example.com 127.0.0.1:3000`
-  - [ ] `pn status`
-- [ ] Verify `pn upgrade` works for npm-installed CLI.
+- [ ] Confirm the package name `proxy-nginx-cli` is available on npm.
+- [ ] Run release checks: `npm test`, `./bin/pn --help`, `./bin/pn --help cn`, `npm pack --dry-run`, owner-specific string scan, and the CI `docker` job on the release commit.
+- [ ] Bump the version (`npm version`) and move `CHANGELOG.md` "Unreleased" under it.
+- [ ] Publish to npm (needs npm credentials).
+- [ ] Test from npm in a clean temporary project: `npm install -g proxy-nginx-cli`, `pn --help`, `pn init`, `pn add app.example.com 127.0.0.1:3000`, `pn status`.
+- [ ] Verify `pn upgrade` works for an npm-installed CLI.
 
 ## Agent Skills
 
-- [ ] Draft a small skill pack for agents using this CLI.
-- [ ] Include common workflows:
-  - [ ] initialize a proxy project
-  - [ ] add a frontend service
-  - [ ] issue certificates
-  - [ ] attach Docker networks
-  - [ ] edit custom templates safely
-  - [ ] recover from certbot failures
-- [ ] Include production safety rules:
-  - [ ] do not overwrite existing templates without `--force`
-  - [ ] use `pn restart` after template edits
-  - [ ] use `pn reload` only for Nginx reloads that do not need template regeneration
-  - [ ] avoid committing real domains or secrets
+- [x] Skill pack: `skills/proxy-nginx-cli/SKILL.md` (workflows, safety rules, certbot recovery).
+- [ ] Publish the skill pack where agents can install it (plugin/marketplace), once the npm release is out.
 
 ## MCP Evaluation
 
-- [ ] Evaluate whether an MCP server is useful.
-- [ ] Prefer skills first if the workflow is mostly instructions and shell commands.
-- [ ] Consider MCP only if agents need structured access to:
-  - [ ] project status
-  - [ ] generated site inventory
-  - [ ] certificate inventory
-  - [ ] safe command execution wrappers
-  - [ ] validation reports
-- [ ] If MCP is useful, design it as a thin layer over the same `lib/commands.js` APIs.
+- [x] `pn status --json` provides the structured project/site/certificate inventory.
+- Decision: do not build an MCP server yet. The skill plus `--json` covers the workflow;
+  revisit if agents need structured results from more commands (then add `--json` to
+  `pn template list` first, and wrap `lib/commands.js` rather than shelling out).
 
 ## Future CLI Improvements
 
-- [ ] Consider a project-template upgrade command with a name that does not conflict with CLI upgrade, such as `pn migrate` or `pn project upgrade`.
-- [ ] Consider a custom template workflow:
-  - [ ] `pn template list`
-  - [ ] `pn template edit <domain>`
-  - [ ] `pn add --template <name>`
-- [ ] Consider a YAML parser for more robust `docker-compose.yml` editing.
-- [ ] Improve `pn status` output for certificate expiry dates.
-- [ ] Add safer certbot lock handling inside `pn cert`.
-
+- [ ] Basic auth per site (`--basic-auth`), needs password hashing (apr1/bcrypt) without extra system tools.
+- [ ] `pn add --template` presets for common stacks (PHP-FPM, WebSocket-only, gRPC).
+- [ ] Per-site `FORCE_HTTPS` (today it is one project-wide `.env` switch).
+- [ ] Wildcard certificates (DNS-01) for aliases that are not individually routable.
+- [ ] `--json` for `template list`, `migrate`, and `cert` results.
